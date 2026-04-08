@@ -1,0 +1,3 @@
+{
+  "post-commit": "hooks/post-commit-sync.sh"
+}
