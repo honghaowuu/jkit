@@ -1,3 +1,8 @@
+---
+name: publishing-service-contract
+description: Use after implementing new or changed API endpoints to publish a SKILL.md and openapi.yaml for this microservice so other Claude instances can call it correctly. Invoked via /publish-contract.
+---
+
 # publishing-service-contract
 
 Generates a `SKILL.md` for this microservice so other microservices (and Claude instances working in other repos) can call it correctly. Also generates the reference OpenAPI spec.

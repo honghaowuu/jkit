@@ -1,3 +1,8 @@
+---
+name: comment
+description: Use when asked to document, comment, or add Javadoc to Java files or directories. Generates accurate Javadoc in dependency order so each file is commented with full knowledge of its dependencies.
+---
+
 # comment
 
 Generates accurate, complete Javadoc and docstrings for under-documented Java codebases by processing files in dependency order — so each file is commented with full knowledge of what it depends on. Edits source files directly in place.

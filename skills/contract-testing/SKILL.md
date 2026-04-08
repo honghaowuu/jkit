@@ -1,3 +1,8 @@
+---
+name: contract-testing
+description: Use after implementing a domain's API endpoints to generate integration tests from api-spec.yaml. Per-domain invocation. Supports Spring Boot 3.1+ (Testcontainers) and legacy (docker-compose) testing strategies.
+---
+
 # contract-testing
 
 Generates API scenario integration tests for a specific domain, derived from its `api-spec.yaml`. Supports both Spring Boot 3.1+ and legacy versions.

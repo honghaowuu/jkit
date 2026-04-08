@@ -1,3 +1,8 @@
+---
+name: spec-delta
+description: Use when spec files in docs/ have changed and you need to compute what is unimplemented, generate a change summary, detect schema changes, and produce an implementation plan. Invoked via /spec-delta.
+---
+
 # spec-delta
 
 Computes the requirements delta since the last implemented spec commit and drives the full implementation cycle: clarify → change-summary → migration preview → plan.

@@ -1,3 +1,8 @@
+---
+name: java-tdd
+description: Use when implementing any Java feature or bugfix. Wraps superpowers:test-driven-development and extends it with JaCoCo coverage gap analysis after GREEN. Commit must use feat(impl):, fix(impl):, or chore(impl): prefix.
+---
+
 # java-tdd
 
 TDD workflow for Java/Spring Boot, extended with JaCoCo coverage gap analysis after the GREEN phase.

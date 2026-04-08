@@ -1,3 +1,8 @@
+---
+name: migrate-project
+description: Use when bootstrapping an existing Java microservice to the standard team structure — adds docs, generates api-spec/domain-model/implement-logic per subdomain, initializes .spec-sync. Invoked via /migrate-project.
+---
+
 # migrate-project
 
 Bootstraps the standard project structure on an existing Java microservice that lacks docs, has sparse comments, and does not follow the team layout.
