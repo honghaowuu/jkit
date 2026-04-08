@@ -1,79 +1,186 @@
 ---
 name: comment
-description: Use when asked to document, comment, or add Javadoc to Java files or directories. Generates accurate Javadoc in dependency order so each file is commented with full knowledge of its dependencies.
+description: >
+  Use whenever the user wants to add comments, docstrings, or documentation to source code —
+  whether a single file, a module, a directory, or an entire project. Trigger on phrases like:
+  "add comments to", "generate docstrings for", "document this code", "this project has no
+  comments", "add javadoc", "comment my code", "write docs for". Even if the user just says
+  "this code is hard to understand" and points at a file or project, this skill is appropriate.
 ---
 
-# comment
+# Comment Skill
 
-Generates accurate, complete Javadoc and docstrings for under-documented Java codebases by processing files in dependency order — so each file is commented with full knowledge of what it depends on. Edits source files directly in place.
+You are generating docstrings for a codebase. The goal is **accuracy and completeness**, not
+verbosity — the comments will be read primarily by AI agents, so they need to be precise and
+informative, not ornate.
 
-**TRIGGER when:** user asks to document, comment, or add Javadoc to Java files or directories in a project.
+## Prerequisites: resolve `codeskel`
 
----
+Before anything else, resolve the `codeskel` binary in this order:
 
-## Step 0: Resolve codeskel binary
-
-Resolve the `codeskel` binary in this order:
 1. `<plugin-root>/bin/codeskel-<os>-<arch>` where `<os>` is `linux`/`macos`/`windows` and `<arch>` is `x86_64`/`aarch64`
 2. `codeskel` on `PATH`
-3. If neither found: stop with "codeskel not found. Expected at <plugin-root>/bin/codeskel-<os>-<arch> or on PATH. See plugin README for setup."
+3. If neither found, stop and tell the user:
 
-Determine `<plugin-root>` as the directory containing this skill file (i.e., navigate up from `skills/comment/SKILL.md`).
-
-## Step 1: Scan the project
-
-If `.codeskel/cache.json` is absent in the project root, run:
-```bash
-codeskel scan <project_root>
+```
+codeskel not found.
+Expected at <plugin-root>/bin/codeskel-<os>-<arch> or on PATH.
+See plugin README for setup instructions.
 ```
 
-This builds the dependency graph. Always re-run if the user says the codebase has changed significantly.
+Determine `<plugin-root>` as the directory containing this skill file (navigate up from `skills/comment/SKILL.md`).
 
-> **Rationalization table — do NOT skip codeskel rescan when:**
+## Determine scope
+
+The user may specify a whole project, a specific directory, or a single file. If not clear, ask.
+Examples:
+- "comment my project at ~/code/myapp" → project root
+- "add docstrings to src/service/UserService.java" → single file
+- "document everything under src/main/java/com/example/api" → directory
+
+## Workflow
+
+### For a single file
+
+Skip the scan/loop. Go straight to [Commenting a file](#commenting-a-file) with just that file.
+No `codeskel` needed for a single file.
+
+### For a directory or whole project
+
+**Step 1 — Scan**
+
+```bash
+codeskel scan <project_root_or_dir>
+```
+
+This outputs a compact JSON summary to stdout:
+
+```json
+{
+  "cache": "/path/to/.codeskel/cache.json",
+  "stats": { "to_comment": 42, "skipped_covered": 8, "skipped_generated": 3, "total_files": 53 }
+}
+```
+
+Tell the user: "Found N files to comment, skipping M already-covered and K generated files."
+
+If `to_comment` is 0, tell the user everything already has sufficient documentation and stop.
+
+> **Rationalization table — do NOT skip the scan when:**
 > - The user says "just a few files changed" — dependency order may still shift
 > - You think you know the order — the scanner is authoritative
-> - The cache file exists — it may be stale; check its mtime vs. source files
+> - A cache file already exists — it may be stale; always re-scan to be sure
 
-## Step 2: Determine file order
+**Step 2 — Loop through files in dependency order**
+
+For `i = 0` to `stats.to_comment - 1`:
 
 ```bash
-codeskel order <project_root> [--path <subpath>]
+# Get this file's details
+codeskel get <cache_path> --index <i>
+
+# Get signatures of its direct dependencies (context for commenting)
+codeskel get <cache_path> --deps <file_path>
 ```
 
-This outputs files in dependency order (dependencies before dependents). Use `--path` to scope to a subdomain or directory.
+Then [comment the file](#commenting-a-file), write it back, and update the cache:
 
-## Step 3: Process files in order
-
-For each file in the dependency-ordered list:
-
-1. Read the file fully
-2. Read all files it depends on (already processed — they have updated Javadoc)
-3. Generate accurate Javadoc for:
-   - Each class/interface/enum (class-level `/** ... */`)
-   - Each public method (method-level `/** ... */`)
-   - Each public field that is not self-evident
-4. Rules for accurate Javadoc:
-   - Describe **what** the method/class does, not **how**
-   - Include `@param` for each parameter with a meaningful description
-   - Include `@return` for non-void methods
-   - Include `@throws` for declared checked exceptions
-   - Do NOT add `@author`, `@version`, or `@since` unless already present
-   - Do NOT add comments that restate the method name (e.g., `/** Gets the name. */` for `getName()`)
-   - For `@Entity` / `@Aggregate` classes, describe the domain concept, not the JPA mechanics
-5. Write the updated file
-
-## Step 4: Verify
-
-After processing all files, run a quick sanity check:
 ```bash
-codeskel rescan <project_root>
+codeskel rescan <cache_path> <file_path>
 ```
 
-If any files still show as undocumented in the output, process them.
+Print progress: `[12/42] src/main/java/com/example/service/UserService.java`
 
-## Step 5: Report
+---
 
-Report:
-- How many files were processed
-- Any files skipped and why
-- Any ambiguities in the domain model that you encountered while writing Javadoc
+## Commenting a file
+
+This is where the actual work happens. For each file:
+
+**1. Load context**
+- Read the full source file
+- If using `codeskel`: you already have the file's `signatures` and its dependencies' signatures from `codeskel get --deps`. Hold these as context — they tell you what imported types actually do, which is often the key to writing accurate docstrings.
+- If `cycle_warning: true`: the file has a circular dependency. Read both files before commenting either.
+
+**2. Identify what needs documentation**
+
+Documentable items (add a docstring if `has_docstring: false`):
+- Classes, interfaces, enums, annotations
+- Public and protected methods and constructors
+- Public and protected fields (especially important for API/SDK types where field semantics matter to callers)
+
+Skip: private fields, auto-generated getters/setters with obvious semantics (e.g. `getId()`, `setName()`), test methods.
+
+**3. Write the docstrings**
+
+Style guide per language:
+
+| Language | Style |
+|---|---|
+| Java | Javadoc: `/** ... */` with `@param`, `@return`, `@throws` |
+| Python | Google-style docstrings with Args/Returns/Raises sections |
+| TypeScript / JavaScript | JSDoc: `/** ... */` with `@param`, `@returns` |
+| Go | Standard Go doc comments: `// FuncName ...` |
+| Rust | `/// ...` line doc comments |
+| C# | XML doc comments: `/// <summary>`, `/// <param>` |
+| C/C++ | Doxygen: `/** ... */` with `\param`, `\return` |
+| Ruby | YARD: `# @param`, `# @return` |
+
+**What to write:**
+
+For a method/function:
+- One-sentence summary of what it does (not how)
+- `@param` for each non-obvious parameter — describe its meaning, not just its type
+- `@return` describing what the return value represents
+- `@throws`/`@raises` for any exception that callers should handle
+- Any non-obvious preconditions or side effects
+
+For a class/interface:
+- What this type represents in the domain
+- Its primary responsibility and lifecycle (e.g. "Created by X, used by Y")
+- Any important invariants
+
+For a field:
+- What this value represents, its valid range or constraints if non-obvious
+- Why it exists (especially for flags, counters, caches)
+
+**What not to write:**
+- Don't restate the method name ("Gets the user" for `getUser()`)
+- Don't document obvious parameters (`@param id The id`)
+- Don't add inline comments — docstrings only
+- Don't pad with filler sentences
+
+**4. Edit the file**
+
+Insert docstrings directly into the source file. Preserve all existing code exactly — only add doc comment blocks. Do not reformat, rename, or restructure anything.
+
+Use the Edit tool to insert each docstring immediately before its declaration.
+
+**5. Verify**
+
+After editing, read back a sample of the modified file to confirm:
+- Docstrings are syntactically correct for the language
+- No existing code was accidentally modified
+- Comment blocks are properly closed
+
+---
+
+## Handling edge cases
+
+**Large file (>500 lines):** Read it in sections. Comment in multiple Edit passes.
+
+**Heavily coupled class (imports many things):** The dep signatures from `codeskel get --deps` are your friend. Read them carefully before writing anything — the parameter types are only meaningful if you know what those types do.
+
+**Ambiguous method:** If you genuinely can't determine what a method does from its body and dependencies, write a concise docstring describing what you can observe (inputs, output type, what it calls), and note "Behavior may depend on [X]" rather than guessing.
+
+**Already has partial docstrings:** Keep existing docstrings. Only add where `has_docstring: false` (from `codeskel get` output). Don't overwrite or merge — that risks losing intentional human-written documentation.
+
+---
+
+## Finishing up
+
+After completing all files:
+
+1. Print a summary: "Commented N files. M items documented."
+2. Remind the user: "All changes are unstaged. Run `git diff` to review before committing."
+3. If any files had `cycle_warning: true`, mention them: "Note: X files had circular dependencies — review their docstrings for cross-references."
