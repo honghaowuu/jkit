@@ -13,5 +13,19 @@
     "microservice",
     "tdd",
     "saas"
+  ],
+  "skills": [
+    { "name": "comment", "path": "skills/comment" },
+    { "name": "migrate-project", "path": "skills/migrate-project" },
+    { "name": "spec-delta", "path": "skills/spec-delta" },
+    { "name": "java-tdd", "path": "skills/java-tdd" },
+    { "name": "contract-testing", "path": "skills/contract-testing" },
+    { "name": "publishing-service-contract", "path": "skills/publishing-service-contract" }
+  ],
+  "hooks": "hooks/hooks.json",
+  "commands": [
+    { "name": "spec-delta", "path": "commands/spec-delta.md" },
+    { "name": "migrate-project", "path": "commands/migrate-project.md" },
+    { "name": "publish-contract", "path": "commands/publish-contract.md" }
   ]
 }
