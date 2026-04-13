@@ -275,14 +275,14 @@ for workflow logic only; structure, frontmatter, and compliance gates must be bu
 
 | Skill | Source | Changes on merge |
 |---|---|---|
-| `comment` | `~/.claude/skills/comment/SKILL.md` | codeskel from `bin/` first; add `## Checklist`; add HARD-GATE before writing any file; add anti-rationalization table for `codeskel rescan` step |
+| `comment` | `~/.claude/skills/comment/SKILL.md` | codeskel from `bin/` first; add `## Checklist`; add HARD-GATE before writing any file; add anti-rationalization table for `jkit skel` rescan step |
 | `publishing-service-contract` | `~/.claude/skills/generate-microservice-skill/SKILL.md` | codeskel from `bin/`; controller path convention to `src/main/java/com/newland/<service>/api/`; add `## Checklist`; add HARD-GATE before overwriting existing skill; add anti-rationalization table for Javadoc quality gate |
 
 **What "rewritten to superpowers pattern" means for each skill:**
 - `description` frontmatter written as **triggering conditions only** — not a workflow summary
 - `## Checklist` section with one `- [ ]` item per major step
 - `<HARD-GATE>` blocks at mandatory human review points (e.g. "do not proceed until user approves")
-- Anti-rationalization table for any step that is commonly skipped (e.g. "do NOT skip codeskel rescan when: ...")
+- Anti-rationalization table for any step that is commonly skipped (e.g. "do NOT skip jkit skel rescan when: ...")
 
 ---
 
@@ -604,13 +604,11 @@ not individual test methods.
    - Scaffold `*IT.java` classes targeting detected repositories, REST clients, and
      message components
    - Write scaffolded test files → tell human path →
-     `"A) Looks good (recommended) B) Edit — tell me what to change"` — repeat on B
-   - Human declines: skip integration test scaffolding, continue to step 5
+     `"A) Looks good (recommended) B) Edit — tell me what to change C) Skip integration tests for now"` — repeat on B; on C: continue to step 5
 5. If contract tests missing:
    - Scaffold WireMock stubs / Spring Cloud Contract files for detected Feign client boundaries
    - Write scaffolded contract files → tell human path →
-     `"A) Looks good (recommended) B) Edit — tell me what to change"` — repeat on B
-   - Human declines: skip contract test scaffolding, continue to step 6
+     `"A) Looks good (recommended) B) Edit — tell me what to change C) Skip contract tests for now"` — repeat on B; on C: continue to step 6
 6. Run `mvn verify -DskipUnitTests`
 7. Fix failures inline; repeat step 6 until green
 
@@ -798,7 +796,7 @@ and directly by team members who want to document any Java file or directory.
 ### Checklist
 
 - [ ] Determine scope
-- [ ] Run codeskel scan
+- [ ] Run jkit skel scan
 - [ ] Comment files in dependency order
 - [ ] Verify edits
 - [ ] Print summary
@@ -855,10 +853,12 @@ via `superpowers:dispatching-parallel-agents`.
 10. If integration tests missing:
     - Add `maven-failsafe-plugin` + Testcontainers from `templates/pom-fragments/testcontainers.xml`
     - Scaffold `*IT.java` examples for detected repositories/clients
-    - Write scaffolded test files → tell human path → get approval
+    - Write scaffolded test files → tell human path →
+      `"A) Looks good (recommended) B) Edit — tell me what to change C) Skip integration tests for now"` — repeat on B; on C: continue to step 11
 11. If contract tests missing:
     - Scaffold WireMock stubs / Spring Cloud Contract files
-    - Write scaffolded contract files → tell human path → get approval
+    - Write scaffolded contract files → tell human path →
+      `"A) Looks good (recommended) B) Edit — tell me what to change C) Skip contract tests for now"` — repeat on B; on C: continue to step 12
 12. Run `mvn verify` to confirm green baseline
 13. Extract all `${VAR}` references from `application.yml` → populate `example.env`
 14. Initialize `docs/.spec-sync` to current `HEAD`
@@ -1054,13 +1054,17 @@ All subcommands output compact JSON consumed directly by skills. No prose output
 **`jkit scan project` output example:**
 ```json
 {
+  "spring_boot_version": "3.2.1",
   "quality_tools": ["checkstyle"],
   "missing_quality_tools": ["pmd", "spotbugs"],
+  "has_jacoco": true,
   "has_unit_tests": true,
   "has_integration_tests": false,
   "has_contract_tests": false,
   "has_testcontainers": false,
-  "has_failsafe": false
+  "has_failsafe": false,
+  "has_springdoc": true,
+  "test_file_count": { "unit": 42, "integration": 0, "contract": 0 }
 }
 ```
 
