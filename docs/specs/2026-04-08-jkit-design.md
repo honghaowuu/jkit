@@ -275,8 +275,8 @@ for workflow logic only; structure, frontmatter, and compliance gates must be bu
 
 | Skill | Source | Changes on merge |
 |---|---|---|
-| `comment` | `~/.claude/skills/comment/SKILL.md` | codeskel from `bin/` first; add `## Checklist`; add HARD-GATE before writing any file; add anti-rationalization table for `jkit skel` rescan step |
-| `publishing-service-contract` | `~/.claude/skills/generate-microservice-skill/SKILL.md` | codeskel from `bin/`; controller path convention to `src/main/java/com/newland/<service>/api/`; add `## Checklist`; add HARD-GATE before overwriting existing skill; add anti-rationalization table for Javadoc quality gate |
+| `comment` | `~/.claude/skills/comment/SKILL.md` | `jkit skel` from `bin/` first; add `## Checklist`; add HARD-GATE before writing any file; add anti-rationalization table for `jkit skel` rescan step |
+| `publishing-service-contract` | `~/.claude/skills/generate-microservice-skill/SKILL.md` | `jkit skel` from `bin/`; controller path convention to `src/main/java/com/newland/<service>/api/`; add `## Checklist`; add HARD-GATE before overwriting existing skill; add anti-rationalization table for Javadoc quality gate |
 
 **What "rewritten to superpowers pattern" means for each skill:**
 - `description` frontmatter written as **triggering conditions only** — not a workflow summary
@@ -592,6 +592,7 @@ path → approve → run. Not TDD-driven — the infrastructure setup is the har
 not individual test methods.
 
 **Flow:**
+0. Read `java-coding-standards.md` from `<plugin-root>/docs/`
 1. `jkit scan spring` → identify integration test targets (repositories, Feign clients,
    Kafka consumers/producers)
 2. `jkit scan contract` → identify contract boundaries (OpenAPI endpoints exposed,
@@ -785,7 +786,7 @@ knowledge of what it depends on.
 pattern (see Skill Development section). Key changes from the personal version:
 - Description frontmatter written as triggering conditions only (not a workflow summary)
 - `## Checklist` section added; HARD-GATE before writing any file
-- Anti-rationalization table added to prevent skipping `codeskel rescan`
+- Anti-rationalization table added to prevent skipping `jkit skel` rescan
 
 **CLI:** calls `bin/jkit skel` directly — no resolution step. Presence validated
 by the `session-start` hook.
@@ -840,7 +841,7 @@ via `superpowers:dispatching-parallel-agents`.
    d. Generate `docs/domains/<name>/api-implement-logic.md` from `@Service` classes
 5. Copy template stubs: `example.env`, `docker-compose.yml`, `envrc` → `.envrc`
 6. Generate `docs/overview.md`:
-   - Analyze codeskel output + key classes (main class, controllers, domain entities)
+   - Analyze `jkit skel` output + key classes (main class, controllers, domain entities)
    - Ask targeted questions if service purpose is unclear (e.g. "What is the primary
      business domain of this service? A) [inferred from packages] B) Other")
    - Draft ≤1 page overview → write to `docs/overview.md` → tell human path →
