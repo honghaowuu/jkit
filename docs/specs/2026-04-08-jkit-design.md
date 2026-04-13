@@ -450,8 +450,7 @@ the domain model changes mean for the underlying data structures.
    ```
    Columns that already exist in the live database are omitted from the preview.
 
-4. Ask human to review and approve `migration-preview.md`
-   - Options: **A) Approve as-is (recommended)** / B) Edit preview first / C) Skip migration
+4. Tell human: `"Written to docs/jkit/<run>/migration-preview.md — A) Approve as-is (recommended) B) Edit preview first C) Skip migration"`
 5. Generate SQL into `docs/jkit/<run>/migration/V<YYYYMMDD>_NNN__<feature>.sql`
 6. Tell human: `"Migration SQL written to docs/jkit/<run>/migration/<file>.sql — A) Looks good — move to src/main/resources/db/migration/ (recommended) B) Edit the SQL first C) Abort"`
 7. On approval, move SQL file to `src/main/resources/db/migration/`
@@ -651,7 +650,7 @@ run. Unchanged endpoints already have tests and are not regenerated.
    B) [list detected Feign clients from codebase]"*
 5. Write `docs/jkit/<run>/contract-tests.md` — scenarios for changed
    endpoints only
-6. Ask human to review and approve the scenario table
+6. Tell human: `"Written to docs/jkit/<run>/contract-tests.md — A) Looks good (recommended) B) Edit — tell me what to change"` — repeat on B
 7. Generate Java test code from the approved scenarios:
    - **≤ ~20 total scenarios across all controllers:** generate the full test class in
      one pass.
@@ -1114,7 +1113,7 @@ RUN DIR: docs/jkit/2026-04-08-billing-bulk-invoice/
    → detects domain-model.md changed → writes migration-preview.md → human approves
    → generates migration/V20260408_001__add_bulk_invoice.sql → human approves
    → invokes writing-plans → writes plan.md → tells human: "Written to docs/jkit/.../plan.md — A) Looks good B) Edit"
-   → human approves plan → spec-delta asks execution mode → invokes java-tdd directly
+   → human approves plan → invokes java-tdd directly (java-tdd asks execution mode)
 
 4. Implementation (java-tdd per task):
    → write failing test → RED → implement → GREEN
