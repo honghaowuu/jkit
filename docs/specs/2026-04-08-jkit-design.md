@@ -325,9 +325,11 @@ conversation context; file-based artifacts restore workflow position.
         *"No .spec-sync found. Which commit was the last one fully implemented?
          A) [sha] [date] [message]   ← most recent spec commit
          B) [sha] [date] [message]
-         ...
-         Z) HEAD — all current specs are already implemented
-         C) Enter a specific SHA manually"*
+         C) [sha] [date] [message]
+         D) [sha] [date] [message]
+         E) [sha] [date] [message]
+         F) HEAD — all current specs are already implemented
+         G) Enter a specific SHA manually"*
         Initialize `.spec-sync` to the chosen SHA, then stop:
         *"Baseline set to [sha]. Run /spec-delta again to see what's pending."*
 3. Read `docs/.spec-sync` → baseline SHA
@@ -541,6 +543,7 @@ When plan-driven, read the full plan before starting. Implement tasks in the ord
 specified by the plan.
 
 **Extended flow (after GREEN phase for each task):**
+0. Read `java-coding-standards.md` from `<plugin-root>/docs/`
 1. **Quality gate** — scan `pom.xml` for Checkstyle, PMD, SpotBugs plugins:
    - If none found: offer to add from `templates/pom-fragments/quality.xml`
      - Human declines: skip quality gate and continue to step 2
@@ -687,6 +690,7 @@ intent and provides a permanent, readable record of what is tested.
 run. Unchanged endpoints already have tests and are not regenerated.
 
 **Flow:**
+0. Read `java-coding-standards.md` from `<plugin-root>/docs/`
 1. Read the diff of `docs/domains/<name>/api-spec.yaml` from the run's baseline SHA
 2. Extract only added or modified endpoints from the diff
 3. Detect Spring Boot version from `pom.xml`
@@ -826,9 +830,11 @@ via `superpowers:dispatching-parallel-agents`.
 
 **Flow:**
 1. `jkit skel domains <project_root>` → detected subdomains JSON
-   - **If no subdomains detected:** Ask: *"No subdomains detected automatically.
-     How many logical domains does this service have? Name them and describe
-     their primary responsibility."* Use the human's answer to define domains manually.
+   - **If no subdomains detected:** Ask:
+     *"No subdomains detected automatically. How should we define the domains?
+      A) I'll describe each domain — name and primary responsibility (recommended)
+      B) Treat the entire service as a single domain"*
+     Use the human's answer to define domains manually.
    - **If CLI fails:** Fall back to manual domain definition via the same question.
 2. Present detected subdomains to human; ask for confirmation/corrections
    - If boundaries are ambiguous, ask targeted questions with labeled options
@@ -1153,8 +1159,8 @@ cp target/x86_64-pc-windows-gnu/release/jkit.exe bin/jkit-windows-x86_64.exe
 ```
 RUN DIR: docs/jkit/2026-04-08-billing-bulk-invoice/
 
-1. Developer edits docs/billing/domain-model.md (new BulkInvoice entity)
-             and docs/billing/api-spec.yaml (new POST /invoices/bulk endpoint)
+1. Developer edits docs/domains/billing/domain-model.md (new BulkInvoice entity)
+             and docs/domains/billing/api-spec.yaml (new POST /invoices/bulk endpoint)
 2. git commit -m "docs(billing): add bulk invoice creation"
 
 3. /spec-delta
@@ -1163,7 +1169,7 @@ RUN DIR: docs/jkit/2026-04-08-billing-bulk-invoice/
    → asks: "Should bulk invoice creation be transactional or best-effort?
             A) Transactional — all succeed or all fail (recommended)
             B) Best-effort — process valid items, skip invalid ones"
-   → writes change-summary.md → tells human: "Written to docs/jkit/.../change-summary.md — A) Looks good B) Edit"
+   → writes change-summary.md → tells human: "Written to docs/jkit/.../change-summary.md — A) Looks good (recommended) B) Edit — tell me what to change"
    → human approves
    → detects domain-model.md changed → writes migration-preview.md → human approves
    → generates migration/V20260408_001__add_bulk_invoice.sql → human approves
