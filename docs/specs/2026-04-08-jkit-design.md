@@ -30,6 +30,7 @@ jkit/
 ├── skills/
 │   ├── spec-delta/SKILL.md
 │   ├── java-tdd/SKILL.md
+│   ├── java-verify/SKILL.md
 │   ├── contract-testing/SKILL.md
 │   ├── publishing-service-contract/
 │   │   └── SKILL.md              ← rewritten from generate-microservice-skill to superpowers pattern
@@ -45,17 +46,13 @@ jkit/
 │   ├── migrate-project.md
 │   └── publish-contract.md
 ├── bin/
-│   ├── jacoco-filter              ← polyglot wrapper (Windows + Unix, single file)
-│   ├── jacoco-filter-linux-x86_64
-│   ├── jacoco-filter-macos-aarch64
-│   ├── jacoco-filter-windows-x86_64.exe
-│   ├── codeskel                   ← polyglot wrapper (Windows + Unix, single file)
-│   ├── codeskel-linux-x86_64
-│   ├── codeskel-macos-aarch64
-│   └── codeskel-windows-x86_64.exe
+│   ├── jkit                       ← polyglot wrapper (Windows + Unix, single file)
+│   ├── jkit-linux-x86_64
+│   ├── jkit-macos-aarch64
+│   └── jkit-windows-x86_64.exe
 ├── docs/
 │   ├── java-coding-standards.md  ← loaded by code-writing skills only
-│   └── codeskel-domains-prd.md
+│   └── jkit-cli-prd.md           ← jkit unified Rust CLI product requirements
 └── templates/
     ├── CLAUDE.md                 ← project workflow conventions only (no coding rules)
     ├── example.env
@@ -191,12 +188,10 @@ Our plugin puts everything for a run in `docs/jkit/<run>/`.
 `docs/jkit/<run>/plan.md`. This override is supported by `writing-plans`
 ("User preferences for plan location override this default").
 
-**3. `publishing-service-contract` codeskel path**
+**3. `jkit` CLI path**
 
-The original `generate-microservice-skill` looks for `codeskel` on `PATH` only.
-jkit bundles `codeskel` in `bin/` — skills call it directly as `bin/codeskel`
-with no resolution logic. Presence is validated once per session by the
-`session-start` hook.
+Skills call `bin/jkit` directly — no `PATH` resolution logic. Presence is
+validated once per session by the `session-start` hook.
 
 ### Safe integrations
 
@@ -207,6 +202,7 @@ with no resolution logic. Presence is validated once per session by the
 | `java-tdd` | `superpowers:subagent-driven-development` | Subagent-driven execution mode |
 | `java-tdd` | `superpowers:executing-plans` | Inline execution mode |
 | `java-tdd` | `superpowers:requesting-code-review` | After all tasks pass quality + coverage gates |
+| `java-verify` | — | Invoked by `java-tdd` after unit TDD/JaCoCo loop; uses `jkit` CLI only |
 | `contract-testing` | `superpowers:debugging` | On implementation-bug test failures |
 | `migrate-project` | `superpowers:dispatching-parallel-agents` | Standard invocation |
 
@@ -215,6 +211,7 @@ with no resolution logic. Presence is validated once per session by the
 Java coding rules live in `<plugin-root>/docs/java-coding-standards.md`.
 They are loaded explicitly at step 0 of code-writing skills only:
 - `java-tdd` — step 0: read `java-coding-standards.md`
+- `java-verify` — step 0: read `java-coding-standards.md`
 - `contract-testing` — step 0: read `java-coding-standards.md`
 
 Non-code skills (`spec-delta`, `migrate-project`, `publishing-service-contract`,
@@ -268,7 +265,7 @@ All jkit skills follow the superpowers skill pattern. When writing or modifying 
 
 ### Reference directory
 
-`reference/jacoco-filter.md` and `reference/codeskel.md` are CLI reference docs maintained alongside the plugin source during development. When writing or modifying a skill that uses these tools, read the relevant reference file first to verify correct flag names, output formats, and exit codes. These files are **not shipped in the final plugin** — they are author aids only and should be excluded from the plugin distribution.
+`reference/jkit.md` is the CLI reference doc maintained alongside the plugin source during development. When writing or modifying a skill that uses `jkit`, read this file first to verify correct subcommand names, flag names, output formats, and exit codes. This file is **not shipped in the final plugin** — it is an author aid only and should be excluded from the plugin distribution.
 
 ### Skill origins and required refactoring
 
@@ -554,16 +551,17 @@ specified by the plan.
    - **If command fails or `target/site/jacoco/jacoco.xml` is absent after build:**
      Stop and ask: *"JaCoCo report generation failed. Verify pom.xml includes
      the JaCoCo plugin (see templates/pom-fragments/jacoco.xml). Add it and re-run."*
-3. `jacoco-filter target/site/jacoco/jacoco.xml --summary --min-score 1.0`
+3. `jkit coverage target/site/jacoco/jacoco.xml --summary --min-score 1.0`
 4. If gaps remain above threshold: for each method in priority order, invoke
    `superpowers:test-driven-development` targeting that specific uncovered path.
    Each gap is a mini TDD cycle: write a test that exercises the missing branch (RED) →
    confirm it fails for the right reason → make it pass (GREEN).
-5. Repeat steps 2–4 until `jacoco-filter` reports no methods above the score threshold.
-6. Invoke `superpowers:requesting-code-review`
-7. Final commit message must use prefix `feat(impl):`, `fix(impl):`, or `chore(impl):`
+5. Repeat steps 2–4 until `jkit coverage` reports no methods above the score threshold.
+6. Invoke `java-verify`
+7. Invoke `superpowers:requesting-code-review`
+8. Final commit message must use prefix `feat(impl):`, `fix(impl):`, or `chore(impl):`
 
-**CLI dependency:** `jacoco-filter` — invoked via `bin/jacoco-filter` wrapper.
+**CLI dependency:** `jkit` — invoked via `bin/jkit` wrapper.
 No installation or OS detection required; the wrapper selects the correct binary automatically.
 
 ### Checklist
@@ -575,11 +573,59 @@ No installation or OS detection required; the wrapper selects the correct binary
 - [ ] Invoke superpowers:test-driven-development per task
 - [ ] Run quality gate (detect tools → run → fix or add)
 - [ ] Run mvn test + jacoco:report
-- [ ] Run jacoco-filter
+- [ ] Run jkit coverage
 - [ ] Invoke superpowers:test-driven-development per gap
 - [ ] Repeat until no gaps above threshold
+- [ ] Invoke java-verify
 - [ ] Invoke superpowers:requesting-code-review
 - [ ] Final commit
+
+---
+
+### `java-verify`
+
+**Purpose:** Detects, scaffolds, and runs integration tests and contract tests for a
+Java microservice. Invoked by `java-tdd` after the unit TDD/JaCoCo loop, before code review.
+
+**Scaffold style:** analyze → generate complete test file → write to path → tell human
+path → approve → run. Not TDD-driven — the infrastructure setup is the hard part,
+not individual test methods.
+
+**Flow:**
+1. `jkit scan spring` → identify integration test targets (repositories, Feign clients,
+   Kafka consumers/producers)
+2. `jkit scan contract` → identify contract boundaries (OpenAPI endpoints exposed,
+   Feign clients consumed)
+3. `jkit scan project` → detect existing test layers (unit tests, integration tests,
+   contract tests, `maven-failsafe-plugin`, Testcontainers)
+4. If integration tests missing:
+   - Add `maven-failsafe-plugin` + Testcontainers from `templates/pom-fragments/testcontainers.xml`
+     if absent
+   - Scaffold `*IT.java` classes targeting detected repositories, REST clients, and
+     message components
+   - Write scaffolded test files → tell human path →
+     `"A) Looks good (recommended) B) Edit — tell me what to change"` — repeat on B
+   - Human declines: skip integration test scaffolding, continue to step 5
+5. If contract tests missing:
+   - Scaffold WireMock stubs / Spring Cloud Contract files for detected Feign client boundaries
+   - Write scaffolded contract files → tell human path →
+     `"A) Looks good (recommended) B) Edit — tell me what to change"` — repeat on B
+   - Human declines: skip contract test scaffolding, continue to step 6
+6. Run `mvn verify -DskipUnitTests`
+7. Fix failures inline; repeat step 6 until green
+
+### Checklist
+
+- [ ] Load java-coding-standards
+- [ ] jkit scan spring
+- [ ] jkit scan contract
+- [ ] jkit scan project
+- [ ] Scaffold integration tests (if missing)
+- [ ] Scaffold contract tests (if missing)
+- [ ] Run mvn verify
+- [ ] Fix failures
+
+`java-verify` does not own the commit. The commit is `java-tdd`'s responsibility.
 
 ---
 
@@ -743,7 +789,7 @@ pattern (see Skill Development section). Key changes from the personal version:
 - `## Checklist` section added; HARD-GATE before writing any file
 - Anti-rationalization table added to prevent skipping `codeskel rescan`
 
-**CLI:** calls `bin/codeskel` directly — no resolution step. Presence validated
+**CLI:** calls `bin/jkit skel` directly — no resolution step. Presence validated
 by the `session-start` hook.
 
 **Used by:** `migrate-project`, `publishing-service-contract` (Javadoc quality gate),
@@ -765,8 +811,8 @@ and directly by team members who want to document any Java file or directory.
 that lacks docs, has sparse comments, and does not follow the team layout.
 
 **Dependencies:**
-- `codeskel domains` subcommand (see CLI section)
-- `comment` skill (bundled in this plugin, uses `codeskel` from `bin/`)
+- `jkit skel` and `jkit scan project` subcommands (see CLI section)
+- `comment` skill (bundled in this plugin, uses `jkit skel` from `bin/`)
 - `superpowers:dispatching-parallel-agents`
 
 **Resume:** If a run directory `docs/jkit/YYYY-MM-DD-migrate/` already exists,
@@ -780,7 +826,7 @@ subdomain. Different subdomains are processed in parallel — one agent per subd
 via `superpowers:dispatching-parallel-agents`.
 
 **Flow:**
-1. `codeskel domains <project_root>` → detected subdomains JSON
+1. `jkit skel domains <project_root>` → detected subdomains JSON
    - **If no subdomains detected:** Ask: *"No subdomains detected automatically.
      How many logical domains does this service have? Name them and describe
      their primary responsibility."* Use the human's answer to define domains manually.
@@ -805,9 +851,18 @@ via `superpowers:dispatching-parallel-agents`.
    generated files with a one-line summary of each. Tell human:
    `"Written to docs/jkit/YYYY-MM-DD-migrate/generated-docs-review.md — A) Looks good — commit (recommended) B) I'll edit some files first — re-run when ready C) Abort"`
 8. Add missing `pom.xml` plugin fragments from `templates/pom-fragments/` if absent
-9. Extract all `${VAR}` references from `application.yml` → populate `example.env`
-10. Initialize `docs/.spec-sync` to current `HEAD`
-11. Final commit: `chore(migrate): bootstrap standard project structure`
+9. `jkit scan project` → detect missing test layers (integration tests, contract tests)
+10. If integration tests missing:
+    - Add `maven-failsafe-plugin` + Testcontainers from `templates/pom-fragments/testcontainers.xml`
+    - Scaffold `*IT.java` examples for detected repositories/clients
+    - Write scaffolded test files → tell human path → get approval
+11. If contract tests missing:
+    - Scaffold WireMock stubs / Spring Cloud Contract files
+    - Write scaffolded contract files → tell human path → get approval
+12. Run `mvn verify` to confirm green baseline
+13. Extract all `${VAR}` references from `application.yml` → populate `example.env`
+14. Initialize `docs/.spec-sync` to current `HEAD`
+15. Final commit: `chore(migrate): bootstrap standard project structure`
 
 ### Checklist
 
@@ -820,6 +875,10 @@ via `superpowers:dispatching-parallel-agents`.
 - [ ] Generate overview.md
 - [ ] Write generated-docs-review.md and get human approval
 - [ ] Add missing pom.xml fragments
+- [ ] jkit scan project (detect test layer gaps)
+- [ ] Scaffold integration tests (if missing)
+- [ ] Scaffold contract tests (if missing)
+- [ ] Run mvn verify (confirm green baseline)
 - [ ] Populate example.env
 - [ ] Initialize .spec-sync
 - [ ] Final commit
@@ -856,11 +915,9 @@ if command -v direnv &>/dev/null && [ -f ".envrc" ]; then
 fi
 
 # 3. Validate bundled CLI tools — warn once if missing or not executable
-for tool in codeskel jacoco-filter; do
-  if [ ! -x "${PLUGIN_ROOT}/bin/${tool}" ]; then
-    echo "jkit: bin/${tool} missing or not executable. Run: chmod +x ~/.claude/plugins/jkit/bin/*" >&2
-  fi
-done
+if [ ! -x "${PLUGIN_ROOT}/bin/jkit" ]; then
+  echo "jkit: bin/jkit missing or not executable. Run: chmod +x ~/.claude/plugins/jkit/bin/*" >&2
+fi
 
 printf '{}\n'
 exit 0
@@ -944,6 +1001,7 @@ deploying; add a `JKIT_HOOK_RUNNING=1` env var guard if re-entrancy is observed.
 | `/spec-delta` | `spec-delta` skill |
 | `/migrate-project` | `migrate-project` skill |
 | `/publish-contract` | `publishing-service-contract` skill |
+| `/java-verify` | `java-verify` skill (can also be run standalone) |
 
 Each command file is a one-sentence instruction directing Claude to invoke the
 corresponding skill. No logic lives in the command files.
@@ -954,7 +1012,7 @@ corresponding skill. No logic lives in the command files.
 
 ### Wrapper script pattern
 
-Each CLI tool in `bin/` ships as a single **polyglot wrapper** plus OS/arch-specific binaries.
+`bin/jkit` ships as a single **polyglot wrapper** plus OS/arch-specific binaries.
 The wrapper is an extensionless file that runs correctly on Windows and Unix from one copy,
 using the same technique as superpowers' `run-hook.cmd`:
 
@@ -962,7 +1020,7 @@ using the same technique as superpowers' `run-hook.cmd`:
 : << 'CMDBLOCK'
 @echo off
 :: Windows — cmd.exe runs this block, then exits
-"%~dp0jacoco-filter-windows-x86_64.exe" %*
+"%~dp0jkit-windows-x86_64.exe" %*
 exit /b %ERRORLEVEL%
 CMDBLOCK
 
@@ -970,24 +1028,43 @@ CMDBLOCK
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
-exec "$SCRIPT_DIR/jacoco-filter-${OS}-${ARCH}" "$@"
+exec "$SCRIPT_DIR/jkit-${OS}-${ARCH}" "$@"
 ```
 
-**Skills call `bin/<tool>` only** — never the OS-specific binary directly. No OS or arch
+**Skills call `bin/jkit` only** — never the OS-specific binary directly. No OS or arch
 detection needed in skill code; the wrapper handles it for all platforms.
 
-### `jacoco-filter` (existing, bundled via `bin/`)
+### `jkit` unified Rust CLI
 
-Parses `target/site/jacoco/jacoco.xml` and outputs prioritized coverage gaps as
-compact JSON.
+Single binary replacing `codeskel` and `jacoco-filter`. See `docs/jkit-cli-prd.md` for
+full product requirements. Subcommands used by skills:
 
-Pre-built binaries + wrappers shipped in `bin/` — no installation required for team members.
+| Subcommand | Purpose | Output |
+|---|---|---|
+| `jkit skel` | Subdomain detection, Javadoc scanning | JSON |
+| `jkit skel domains <root>` | Detect service subdomains | JSON |
+| `jkit coverage <jacoco.xml>` | Prioritized JaCoCo coverage gaps | JSON |
+| `jkit scan spring` | Spring components (repos, Feign, Kafka) | JSON |
+| `jkit scan contract` | API/Feign contract boundaries | JSON |
+| `jkit scan schema` | Liquibase/Flyway changelog summary | JSON |
+| `jkit scan project` | pom.xml + test structure gap detection | JSON |
 
-### `codeskel domains` (new subcommand, binary bundled via `bin/`)
+All subcommands output compact JSON consumed directly by skills. No prose output.
 
-Extends `codeskel` with subdomain detection. See `docs/codeskel-domains-prd.md`.
+**`jkit scan project` output example:**
+```json
+{
+  "quality_tools": ["checkstyle"],
+  "missing_quality_tools": ["pmd", "spotbugs"],
+  "has_unit_tests": true,
+  "has_integration_tests": false,
+  "has_contract_tests": false,
+  "has_testcontainers": false,
+  "has_failsafe": false
+}
+```
 
-**Output format:**
+**`jkit skel domains` output example:**
 ```json
 {
   "detected_subdomains": [
@@ -1006,17 +1083,12 @@ Extends `codeskel` with subdomain detection. See `docs/codeskel-domains-prd.md`.
 
 ---
 
-## `codeskel domains` PRD
+## `jkit` CLI — Design Notes
 
-**Problem:** Migrating existing Java microservices to the standard doc structure
-requires identifying subdomain boundaries. Reading all Java files with Claude is
-token-expensive and imprecise. A deterministic scanner eliminates this cost.
+Full product requirements are in `docs/jkit-cli-prd.md`. Key design constraints
+captured here for skill authors:
 
-**Approach:** Add a `domains` subcommand to the existing `codeskel` CLI. All
-required data (packages, class-level annotations) is already collected by
-`codeskel scan` via tree-sitter. No new tool or new parsing logic needed.
-
-**Detection rules:**
+**`jkit skel domains` detection rules:**
 
 | Signal | Role |
 |---|---|
@@ -1025,31 +1097,12 @@ required data (packages, class-level annotations) is already collected by
 | `@Entity` / `@Aggregate` package grouping | Secondary |
 | `@Service` package grouping | Secondary |
 
-**CLI interface:**
-```
-codeskel domains <project_root> [OPTIONS]
+**Exit codes:** 0 = success, 1 = fatal, 2 = partial success with warnings.
 
-Options:
-  --output <path>       Write JSON to file (default: stdout)
-  --pretty              Pretty-print output
-  --min-classes <n>     Minimum classes to qualify as a subdomain [default: 2]
-  --src <path>          Override source root [default: src/main/java]
-```
-
-**Exit codes:** Follows existing `codeskel` conventions (0 = success, 1 = fatal,
-2 = partial success with warnings).
-
-**Non-goals:**
-- Does not read method bodies
-- Does not infer business logic or domain relationships
-- Does not generate docs (that is Claude's responsibility)
-
-**Implementation notes:**
-- Reuse `.codeskel/cache.json` if present; run `codeskel scan` first if not
-- Group by top-level package segment after the group ID prefix
-  (e.g., `com.newland` prefix → `billing` from `com.newland.billing`)
-- Annotation detection reuses existing tree-sitter parsing — no raw regex
-- Rust, same codebase as `codeskel`
+**Non-goals for all scan subcommands:**
+- Do not read method bodies
+- Do not infer business logic or domain relationships
+- Do not generate docs (that is Claude's responsibility)
 
 ---
 
@@ -1078,17 +1131,14 @@ cd ~/.claude/plugins/jkit && git pull && chmod +x bin/*
 
 **For plugin maintainers (building binaries):**
 ```bash
-# Build and copy binaries after new releases of jacoco-filter or codeskel
+# Build and copy binaries after new releases of jkit
 # Linux / macOS
-cargo build --release --manifest-path /path/to/jacoco-filter/Cargo.toml
-cargo build --release --manifest-path /path/to/codeskel/Cargo.toml
-cp target/release/jacoco-filter bin/jacoco-filter-$(uname -s | tr A-Z a-z)-$(uname -m)
-cp target/release/codeskel      bin/codeskel-$(uname -s | tr A-Z a-z)-$(uname -m)
+cargo build --release --manifest-path /path/to/jkit/Cargo.toml
+cp target/release/jkit bin/jkit-$(uname -s | tr A-Z a-z)-$(uname -m)
 
 # Windows (cross-compile or build natively)
 cargo build --release --target x86_64-pc-windows-gnu
-cp target/x86_64-pc-windows-gnu/release/jacoco-filter.exe bin/jacoco-filter-windows-x86_64.exe
-cp target/x86_64-pc-windows-gnu/release/codeskel.exe      bin/codeskel-windows-x86_64.exe
+cp target/x86_64-pc-windows-gnu/release/jkit.exe bin/jkit-windows-x86_64.exe
 ```
 
 ---
@@ -1118,7 +1168,8 @@ RUN DIR: docs/jkit/2026-04-08-billing-bulk-invoice/
 4. Implementation (java-tdd per task):
    → write failing test → RED → implement → GREEN
    → quality gate: pom.xml has Checkstyle → mvn checkstyle:check → PASS
-   → mvn clean test jacoco:report → jacoco-filter → no high-priority gaps
+   → mvn clean test jacoco:report → jkit coverage → no high-priority gaps
+   → java-verify: jkit scan spring/contract/project → integration tests present → mvn verify → PASS
    → superpowers:requesting-code-review → review passes
    → final task: mv migration SQL to src/main/resources/db/migration/
 
@@ -1149,7 +1200,8 @@ RUN DIR: docs/jkit/2026-04-08-billing-bulk-invoice/
    → human approves → generates SQL → human approves → writes `plan.md` → plan review loop
    (review → edit → review → ...) → human approves → invokes `java-tdd` directly
 4. `java-tdd` → detects plan → implements tasks via TDD → runs quality gate →
-   runs jacoco-filter → fills coverage gaps → invokes `superpowers:requesting-code-review`
+   runs `jkit coverage` → fills coverage gaps → invokes `java-verify` →
+   invokes `superpowers:requesting-code-review`
    → final `feat(impl):` commit → post-commit hook updates `.spec-sync`
 5. `/contract-testing` → generates `contract-tests.md` → human approves scenarios →
    generates `*IntegrationTest.java` → tests pass
@@ -1162,7 +1214,8 @@ spec-delta telling writing-plans not to ask (implementation is always via java-t
 1. Developer has existing Java service without standard structure
 2. `/migrate-project` → detects subdomains → comments classes → generates
    `docs/domains/*/` spec files → copies templates → writes `generated-docs-review.md`
-   → human approves → final `chore(migrate):` commit
+   → human approves → detects missing test layers → scaffolds integration/contract tests
+   → `mvn verify` green → final `chore(migrate):` commit
 3. `/publish-contract` → generates `docs/skills/<service>/SKILL.md`
 4. Developer edits generated spec files to add missing business context, then
    `git commit -m "docs(spec): refine initial spec"` → run Scenario A from here
