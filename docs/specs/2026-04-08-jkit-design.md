@@ -44,7 +44,8 @@ jkit/
 ├── commands/
 │   ├── spec-delta.md
 │   ├── migrate-project.md
-│   └── publish-contract.md
+│   ├── publish-contract.md
+│   └── java-verify.md
 ├── bin/
 │   ├── jkit                       ← polyglot wrapper (Windows + Unix, single file)
 │   ├── jkit-linux-x86_64
@@ -203,7 +204,7 @@ validated once per session by the `session-start` hook.
 | `java-tdd` | `superpowers:executing-plans` | Inline execution mode |
 | `java-tdd` | `superpowers:requesting-code-review` | After all tasks pass quality + coverage gates |
 | `java-verify` | — | Invoked by `java-tdd` after unit TDD/JaCoCo loop; uses `jkit` CLI only |
-| `contract-testing` | `superpowers:debugging` | On implementation-bug test failures |
+| `contract-testing` | `superpowers:systematic-debugging` | On implementation-bug test failures |
 | `migrate-project` | `superpowers:dispatching-parallel-agents` | Standard invocation |
 
 ### `java-coding-standards.md`
@@ -320,9 +321,9 @@ conversation context; file-based artifacts restore workflow position.
    - **Missing:** Initialize baseline interactively:
      a. Run `git log --oneline -- docs/domains/*/` to find commits that touched spec files
      b. **No such commits:** Initialize silently to HEAD and continue:
-        *"No spec commits found. Initialized .spec-sync to HEAD."*
+        *"No spec commits found. Initialized docs/.spec-sync to HEAD."*
      c. **Commits found:** Show the last 5, ask:
-        *"No .spec-sync found. Which commit was the last one fully implemented?
+        *"No docs/.spec-sync found. Which commit was the last one fully implemented?
          A) [sha] [date] [message]   ← most recent spec commit
          B) [sha] [date] [message]
          C) [sha] [date] [message]
@@ -726,9 +727,9 @@ run. Unchanged endpoints already have tests and are not regenerated.
      approved scenario table): fix the generated test inline — do not change the
      approved scenario table. Re-run tests.
    - **B) Implementation bug** (test is correct per spec, production endpoint
-     misbehaves): invoke `superpowers:debugging` targeting the failing endpoint.
+     misbehaves): invoke `superpowers:systematic-debugging` targeting the failing endpoint.
    - **After one self-fix pass:** if tests still fail for any reason, always escalate
-     to `superpowers:debugging` regardless of failure type.
+     to `superpowers:systematic-debugging` regardless of failure type.
 
 ### Checklist
 
@@ -742,7 +743,7 @@ run. Unchanged endpoints already have tests and are not regenerated.
 - [ ] Get scenario approval
 - [ ] Generate test code
 - [ ] Run tests
-- [ ] Fix failures or invoke superpowers:debugging
+- [ ] Fix failures or invoke superpowers:systematic-debugging
 - [ ] Confirm all tests passing
 
 `contract-testing` does not own the commit. The commit is the caller's responsibility
@@ -1173,7 +1174,7 @@ RUN DIR: docs/jkit/2026-04-08-billing-bulk-invoice/
    → human approves
    → detects domain-model.md changed → writes migration-preview.md → human approves
    → generates migration/V20260408_001__add_bulk_invoice.sql → human approves
-   → invokes writing-plans → writes plan.md → tells human: "Written to docs/jkit/.../plan.md — A) Looks good B) Edit"
+   → invokes writing-plans → writes plan.md → tells human: "Written to docs/jkit/.../plan.md — A) Looks good (recommended) B) Edit — tell me what to change"
    → human approves plan → invokes java-tdd directly (java-tdd asks execution mode)
 
 4. Implementation (java-tdd per task):
