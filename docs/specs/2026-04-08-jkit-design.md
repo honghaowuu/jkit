@@ -340,13 +340,14 @@ conversation context; file-based artifacts restore workflow position.
    - **Missing:** Generate it before proceeding:
      Read all spec files in `docs/domains/*/` → draft a ≤1 page overview describing what the
      service does, its domains, and primary responsibilities → ask targeted questions
-     if anything is unclear → show draft to human for approval → write approved version
+     if anything is unclear → write draft to `docs/overview.md` → tell human path →
+     ask: `"A) Looks good (recommended) B) Edit — tell me what to change"` → repeat on B
    - **Present:** Read it as background context
    - **New domain added in diff:** After change-summary approval, prompt:
      *"A new domain was added. Should docs/overview.md be updated?
       A) Yes — generate an updated draft (recommended)
       B) No — overview is still accurate"*
-     If yes: draft update → show to human → write on approval
+     If yes: write updated draft → tell human path → get approval as above
 7. Identify which domains changed; order tasks within each domain by dependency:
    `domain-model` → `api-implement-logic` → `api-spec`
    Cross-domain ordering: if domain-A's model is referenced by domain-B's API,
@@ -357,20 +358,25 @@ conversation context; file-based artifacts restore workflow position.
    keyword scanning; use understanding of the domain model changes to determine this.
 9. Ask targeted clarification questions one at a time — only for genuine ambiguities
    (with labeled options + recommendation on each question)
-10. Write `docs/jkit/<run>/change-summary.md`:
+10. Create run directory `docs/jkit/YYYY-MM-DD-<feature>/` where `<feature>` is a short slug
+    derived from the most significant change in the diff (e.g., `billing-bulk-invoice`)
+11. Write `docs/jkit/<run>/change-summary.md`:
     - Table of domains changed, what is added/modified/removed per domain
     - SQL migration flag: whether schema changes are implied (from step 8 analysis)
     - Cross-domain effects if any
-11. Ask human to review and approve `change-summary.md` before proceeding
-12. Invoke `superpowers:writing-plans` with: diff content + overview + clarification answers,
+12. Tell human: `"Written to docs/jkit/<run>/change-summary.md — A) Looks good (recommended) B) Edit — tell me what to change"` — repeat on B
+13. **If schema changes were flagged in step 8:** run the SQL migration sub-flow
+    (see `### SQL migration` section) — introspect DB, write `migration-preview.md`,
+    get human approval, generate SQL, get human approval, then continue
+14. Invoke `superpowers:writing-plans` with: diff content + overview + clarification answers,
     and two overrides:
     - Save plan to `docs/jkit/<run>/plan.md` (not the superpowers default location)
     - Replace the plan header agentic-worker note with:
       `> **For agentic workers:** Use `/java-tdd` to implement this plan (TDD workflow with JaCoCo coverage analysis).`
-13. Tell human: `"Plan written to docs/jkit/<run>/plan.md — A) Looks good (recommended) B) Edit — tell me what to change"`
+15. Tell human: `"Plan written to docs/jkit/<run>/plan.md — A) Looks good (recommended) B) Edit — tell me what to change"`
     - On B: apply requested changes to `plan.md` → repeat
-    - On A: ask execution mode (Subagent-Driven or Inline?), then invoke `java-tdd` directly
-14. After implementation is complete and committed, the post-commit hook updates
+    - On A: invoke `java-tdd` directly — `java-tdd` will ask execution mode (Subagent-Driven or Inline?)
+16. After implementation is complete and committed, the post-commit hook updates
     `.spec-sync` automatically
 
 ### Checklist
@@ -385,12 +391,12 @@ conversation context; file-based artifacts restore workflow position.
 - [ ] Create run directory
 - [ ] Write change-summary.md
 - [ ] Get change-summary approval
-- [ ] Introspect live DB schema
-- [ ] Write migration-preview.md
-- [ ] Get migration-preview approval
-- [ ] Generate migration SQL
+- [ ] (if schema changes) Introspect live DB schema
+- [ ] (if schema changes) Write migration-preview.md
+- [ ] (if schema changes) Get migration-preview approval
+- [ ] (if schema changes) Generate migration SQL and get approval
 - [ ] Invoke writing-plans
-- [ ] Show plan path and get approval
+- [ ] Get plan approval
 - [ ] Invoke java-tdd
 
 **Invoked by:** `/spec-delta` command
@@ -402,7 +408,7 @@ conversation context; file-based artifacts restore workflow position.
 **Not a standalone skill** — SQL migration generation is a step triggered within
 the `spec-delta` workflow when schema changes are detected.
 
-**Trigger:** Flagged by the semantic schema change analysis in `spec-delta` step 7.
+**Trigger:** Flagged by the semantic schema change analysis in `spec-delta` step 8.
 Claude reads the full diff of all three spec docs and reasons about whether the changes
 imply database schema changes — no keyword matching, pure semantic understanding of what
 the domain model changes mean for the underlying data structures.
@@ -447,11 +453,7 @@ the domain model changes mean for the underlying data structures.
 4. Ask human to review and approve `migration-preview.md`
    - Options: **A) Approve as-is (recommended)** / B) Edit preview first / C) Skip migration
 5. Generate SQL into `docs/jkit/<run>/migration/V<YYYYMMDD>_NNN__<feature>.sql`
-6. Show the generated SQL to the human for review:
-   > "Here is the generated migration SQL. Please review before it is applied.
-   > A) Looks good — move to src/main/resources/db/migration/ (recommended)
-   > B) Edit the SQL first
-   > C) Abort"
+6. Tell human: `"Migration SQL written to docs/jkit/<run>/migration/<file>.sql — A) Looks good — move to src/main/resources/db/migration/ (recommended) B) Edit the SQL first C) Abort"`
 7. On approval, move SQL file to `src/main/resources/db/migration/`
    and include it in the implementation commit
 
@@ -545,6 +547,8 @@ specified by the plan.
 **Extended flow (after GREEN phase for each task):**
 1. **Quality gate** — scan `pom.xml` for Checkstyle, PMD, SpotBugs plugins:
    - If none found: offer to add from `templates/pom-fragments/quality.xml`
+     - Human declines: skip quality gate and continue to step 2
+     - Human accepts: add fragment, then run
    - Run detected tools: `mvn checkstyle:check pmd:check spotbugs:check` (only the ones present)
    - Fix failures inline; if new plugins were added, note them in the final commit message
 2. `mvn clean test jacoco:report`
@@ -796,13 +800,11 @@ via `superpowers:dispatching-parallel-agents`.
    - Analyze codeskel output + key classes (main class, controllers, domain entities)
    - Ask targeted questions if service purpose is unclear (e.g. "What is the primary
      business domain of this service? A) [inferred from packages] B) Other")
-   - Draft ≤1 page overview → show to human for approval → write on approval
+   - Draft ≤1 page overview → write to `docs/overview.md` → tell human path →
+     ask: `"A) Looks good (recommended) B) Edit — tell me what to change"` → repeat on B
 7. Write `docs/jkit/YYYY-MM-DD-migrate/generated-docs-review.md` — a table of all
-   generated files with a one-line summary of each. Ask human to review:
-   > "I've generated the following docs. Please review before I commit.
-   > A) Looks good — commit (recommended)
-   > B) I'll edit some files first — re-run when ready
-   > C) Abort"
+   generated files with a one-line summary of each. Tell human:
+   `"Written to docs/jkit/YYYY-MM-DD-migrate/generated-docs-review.md — A) Looks good — commit (recommended) B) I'll edit some files first — re-run when ready C) Abort"`
 8. Add missing `pom.xml` plugin fragments from `templates/pom-fragments/` if absent
 9. Extract all `${VAR}` references from `application.yml` → populate `example.env`
 10. Initialize `docs/.spec-sync` to current `HEAD`
@@ -1144,9 +1146,9 @@ RUN DIR: docs/jkit/2026-04-08-billing-bulk-invoice/
 1. Developer edits `docs/domains/billing/domain-model.md` and `api-spec.yaml`
 2. `git commit -m "docs(spec): add bulk invoice feature"`
 3. `/spec-delta` → syncs remote → computes diff → asks clarifications → writes
-   `change-summary.md` → human approves → writes `plan.md` → plan review loop
-   (review → edit → review → ...) → human approves → spec-delta asks execution mode
-   → invokes `java-tdd` directly
+   `change-summary.md` → human approves → if schema changes: writes `migration-preview.md`
+   → human approves → generates SQL → human approves → writes `plan.md` → plan review loop
+   (review → edit → review → ...) → human approves → invokes `java-tdd` directly
 4. `java-tdd` → detects plan → implements tasks via TDD → runs quality gate →
    runs jacoco-filter → fills coverage gaps → invokes `superpowers:requesting-code-review`
    → final `feat(impl):` commit → post-commit hook updates `.spec-sync`
@@ -1196,8 +1198,8 @@ catches this before the file is moved to `src/main/resources/db/migration/`.
 1. Developer runs `/spec-delta`, approves `change-summary.md`, then gets interrupted
    before `plan.md` is written
 2. Developer re-runs `/spec-delta` → detects existing run directory →
-   asks "Resume run `2026-04-08-billing-bulk-invoice`?" → resumes from step 12
-   (invoke writing-plans), skipping already-completed steps
+   asks "Resume run `2026-04-08-billing-bulk-invoice`?" → resumes from the
+   `writing-plans` invocation step, skipping already-completed steps
 3. Alternatively: use Claude Code's `/resume` to restore conversation context, then
    re-run the skill — the run directory state prevents re-doing completed work
 
