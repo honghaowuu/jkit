@@ -30,7 +30,7 @@ Implements the final skill that makes a service callable by other teams:
 ```yaml
 ---
 name: publish-contract
-description: Use when the user runs /publish-contract, or after implementing new or changed API endpoints.
+description: Use when publishing the service API contract for other microservices, or after implementing new or changed API endpoints.
 ---
 ```
 

@@ -28,10 +28,6 @@ Establishes the plugin skeleton: registration, hooks, CLI wrapper, templates, an
 | `hooks/session-start` | Create | direnv setup + jkit CLI validation |
 | `hooks/post-commit-sync.sh` | Create | Updates `.spec-sync` after impl commits |
 | `bin/jkit` | Create | Polyglot CLI wrapper |
-| `commands/spec-delta.md` | Update | Trigger spec-delta skill |
-| `commands/java-verify.md` | Create | Trigger java-verify skill (standalone re-runs + automatic from java-tdd) |
-| `commands/contract-testing.md` | Create | Trigger contract-testing skill (human-initiated per domain) |
-| `commands/publish-contract.md` | Update | Trigger publish-contract skill |
 | `templates/CLAUDE.md` | Create | Project workflow conventions |
 | `templates/envrc` | Create | direnv template |
 | `templates/example.env` | Create | Env var template |
@@ -65,13 +61,7 @@ Establishes the plugin skeleton: registration, hooks, CLI wrapper, templates, an
     { "name": "contract-testing",  "path": "skills/contract-testing" },
     { "name": "publish-contract",  "path": "skills/publish-contract" }
   ],
-  "hooks": "hooks/hooks.json",
-  "commands": [
-    { "name": "spec-delta",        "path": "commands/spec-delta.md" },
-    { "name": "java-verify",       "path": "commands/java-verify.md" },
-    { "name": "contract-testing",  "path": "commands/contract-testing.md" },
-    { "name": "publish-contract",  "path": "commands/publish-contract.md" }
-  ]
+  "hooks": "hooks/hooks.json"
 }
 ```
 
@@ -226,16 +216,15 @@ Bundled binaries: `jkit-linux-x86_64`, `jkit-macos-aarch64`, `jkit-windows-x86_6
 
 ---
 
-## Commands
+## Skill Invocation
 
-One-sentence trigger files. No logic in command files.
+Skills are invoked via the Claude Code `Skill` tool — no slash commands. Developers trigger skills by name:
+- `spec-delta` — start the implementation loop after spec changes
+- `java-verify` — run integration/contract test verification (standalone or via java-tdd)
+- `contract-testing` — generate API scenario tests for a specific domain (human-initiated per domain)
+- `publish-contract` — publish the service contract after API changes
 
-- `commands/spec-delta.md`: `Invoke the spec-delta skill.`
-- `commands/java-verify.md`: `Invoke the java-verify skill.`
-- `commands/contract-testing.md`: `Invoke the contract-testing skill.`
-- `commands/publish-contract.md`: `Invoke the publish-contract skill.`
-
-**Note on `/java-verify`:** This command is for standalone use — ad-hoc re-runs or when the developer wants to verify integration tests independently. `java-tdd` also invokes `java-verify` automatically as its final step. Both paths are valid and supported.
+**Note on `java-verify`:** Can be invoked standalone (ad-hoc re-runs, independent verification) or automatically as the final step of `java-tdd`. Both paths are supported.
 
 ---
 
@@ -270,9 +259,9 @@ Single `application.yml` using `${ENV_VAR:default}`. No `application-{profile}.y
 
 1. Edit `docs/domains/` spec files
 2. `git commit -m "docs(<domain>): <what changed>"`
-3. `/spec-delta` → review artifacts → plan approved → java-tdd runs
-4. `/java-verify` (also invoked by java-tdd automatically)
-5. `/publish-contract` after API changes
+3. Use `spec-delta` skill → review artifacts → plan approved → java-tdd runs
+4. `java-verify` skill (also invoked by java-tdd automatically)
+5. `publish-contract` skill after API changes
 
 ## jkit Run Artifacts
 

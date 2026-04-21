@@ -34,7 +34,7 @@ After this iteration, the full quality arc is: TDD → quality gate → coverage
 ```yaml
 ---
 name: java-verify
-description: Use when verifying integration and contract test coverage after java-tdd completes, or when running /java-verify directly.
+description: Use when verifying integration and contract test coverage after java-tdd completes, or when explicitly asked to verify integration tests.
 ---
 ```
 

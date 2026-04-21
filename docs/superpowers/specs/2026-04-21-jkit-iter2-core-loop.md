@@ -37,7 +37,7 @@ edit docs/domains/ → commit → /spec-delta → plan approved → java-tdd →
 ```yaml
 ---
 name: spec-delta
-description: Use when the user runs /spec-delta, or when computing which spec changes in docs/domains/ need to be implemented since the last implementation commit.
+description: Use when computing which spec changes in docs/domains/ need to be implemented since the last implementation commit.
 ---
 ```
 
