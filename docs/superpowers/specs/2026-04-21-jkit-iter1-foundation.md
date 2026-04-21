@@ -29,7 +29,8 @@ Establishes the plugin skeleton: registration, hooks, CLI wrapper, templates, an
 | `hooks/post-commit-sync.sh` | Create | Updates `.spec-sync` after impl commits |
 | `bin/jkit` | Create | Polyglot CLI wrapper |
 | `commands/spec-delta.md` | Update | Trigger spec-delta skill |
-| `commands/java-verify.md` | Create | Trigger java-verify skill |
+| `commands/java-verify.md` | Create | Trigger java-verify skill (standalone re-runs + automatic from java-tdd) |
+| `commands/contract-testing.md` | Create | Trigger contract-testing skill (human-initiated per domain) |
 | `commands/publish-contract.md` | Update | Trigger publish-contract skill |
 | `templates/CLAUDE.md` | Create | Project workflow conventions |
 | `templates/envrc` | Create | direnv template |
@@ -66,9 +67,10 @@ Establishes the plugin skeleton: registration, hooks, CLI wrapper, templates, an
   ],
   "hooks": "hooks/hooks.json",
   "commands": [
-    { "name": "spec-delta",       "path": "commands/spec-delta.md" },
-    { "name": "java-verify",      "path": "commands/java-verify.md" },
-    { "name": "publish-contract", "path": "commands/publish-contract.md" }
+    { "name": "spec-delta",        "path": "commands/spec-delta.md" },
+    { "name": "java-verify",       "path": "commands/java-verify.md" },
+    { "name": "contract-testing",  "path": "commands/contract-testing.md" },
+    { "name": "publish-contract",  "path": "commands/publish-contract.md" }
   ]
 }
 ```
@@ -230,7 +232,10 @@ One-sentence trigger files. No logic in command files.
 
 - `commands/spec-delta.md`: `Invoke the spec-delta skill.`
 - `commands/java-verify.md`: `Invoke the java-verify skill.`
+- `commands/contract-testing.md`: `Invoke the contract-testing skill.`
 - `commands/publish-contract.md`: `Invoke the publish-contract skill.`
+
+**Note on `/java-verify`:** This command is for standalone use — ad-hoc re-runs or when the developer wants to verify integration tests independently. `java-tdd` also invokes `java-verify` automatically as its final step. Both paths are valid and supported.
 
 ---
 

@@ -12,9 +12,9 @@
 Implements the two skills that complete the quality assurance story after `java-tdd`:
 
 1. **`java-verify`** — scaffolds and runs integration tests and contract tests; final step before code review
-2. **`contract-testing`** — generates per-domain API scenario tests from `api-spec.yaml`; invoked by the human after a domain's endpoints are implemented
+2. **`contract-testing`** — generates per-domain API scenario tests from `api-spec.yaml`. **Human-initiated and optional per domain** — invoked via `/contract-testing` after a domain's endpoints are implemented. Not automatically invoked by `java-tdd` or `java-verify`.
 
-After this iteration, every implementation goes through: TDD → quality gate → coverage → integration tests → contract tests → code review.
+After this iteration, the full quality arc is: TDD → quality gate → coverage → `java-verify` (integration + contract scaffolding) → code review → (optionally) `/contract-testing` per domain for full API scenario coverage.
 
 ---
 
@@ -34,7 +34,7 @@ After this iteration, every implementation goes through: TDD → quality gate �
 ```yaml
 ---
 name: java-verify
-description: Use when verifying integration and contract test coverage after java-tdd completes, or when running /java-verify directly. Detects missing test layers, scaffolds them, and runs mvn verify.
+description: Use when verifying integration and contract test coverage after java-tdd completes, or when running /java-verify directly.
 ---
 ```
 
@@ -170,7 +170,7 @@ java-verify does NOT own the final commit. The commit is `java-tdd`'s responsibi
 ```yaml
 ---
 name: contract-testing
-description: Use when generating or running API scenario integration tests for a specific domain after its endpoints are implemented. Derives test scenarios from the domain's api-spec.yaml diff.
+description: Use when generating or running API scenario integration tests for a specific domain after its endpoints are implemented.
 ---
 ```
 

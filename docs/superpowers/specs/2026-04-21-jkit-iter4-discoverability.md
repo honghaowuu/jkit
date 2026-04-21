@@ -30,7 +30,7 @@ Implements the final skill that makes a service callable by other teams:
 ```yaml
 ---
 name: publish-contract
-description: Use when the user runs /publish-contract, or after implementing new or changed API endpoints, to generate a SKILL.md and openapi.yaml so other microservices can call this one correctly.
+description: Use when the user runs /publish-contract, or after implementing new or changed API endpoints.
 ---
 ```
 
@@ -125,8 +125,11 @@ If the service consumes Feign clients:
 
 **Step 4: Javadoc quality check**
 
+Derive the controller path from `pom.xml` `<groupId>` (replace dots with slashes) + service name:
 ```bash
-bin/jkit skel src/main/java/com/newland/<service>/api/
+GROUP_PATH=$(mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout | tr '.' '/')
+SERVICE=$(mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout)
+bin/jkit skel "src/main/java/${GROUP_PATH}/${SERVICE}/api/"
 ```
 
 Scan the output for undocumented or thinly documented controller methods (missing `@param`, missing `@return`, placeholder comments like "TODO" or method-name restatements).
@@ -274,12 +277,15 @@ The `(impl):` scope triggers the post-commit hook to update `docs/.spec-sync`.
 
 ## Output Location
 
+**Context:** `publish-contract` runs inside a **microservice project** (not the jkit plugin repo). The output goes into that service's own repository so other teams can read it without installing anything.
+
 ```
-docs/skills/
-  <service-name>/
-    SKILL.md           ← the published contract
-    reference/
-      openapi.yaml     ← always generated
+<microservice-repo>/
+  docs/skills/
+    <service-name>/
+      SKILL.md           ← the published contract
+      reference/
+        openapi.yaml     ← always generated
 ```
 
 This directory is committed to the service's repo so other teams can read it without installing anything.

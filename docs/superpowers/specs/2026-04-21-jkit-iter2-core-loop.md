@@ -311,7 +311,7 @@ On approval: **REQUIRED SUB-SKILL: invoke `java-tdd`** — java-tdd will ask exe
 ```yaml
 ---
 name: java-tdd
-description: Use when implementing any Java feature or bugfix in this project. Wraps superpowers:test-driven-development with JaCoCo coverage gap analysis and quality gates.
+description: Use when implementing any Java feature or bugfix in this project via test-driven development.
 ---
 ```
 
