@@ -1,7 +1,0 @@
-<!-- springdoc-openapi dependency — add inside <dependencies> -->
-<!-- Generates OpenAPI spec at /v3/api-docs when app is running -->
-<dependency>
-    <groupId>org.springdoc</groupId>
-    <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-    <version>2.3.0</version>
-</dependency>
