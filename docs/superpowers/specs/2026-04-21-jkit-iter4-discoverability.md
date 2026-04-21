@@ -402,6 +402,14 @@ B) Abort
 
 **Step 10: Commit**
 
+`smart-doc.json` is a build config for this microservice — commit it separately if newly created:
+```bash
+# If smart-doc.json was newly created this run
+git add smart-doc.json pom.xml
+git commit -m "chore(impl): add smart-doc configuration"
+```
+
+Commit the contract output separately:
 ```bash
 git add docs/contracts/{service-name}/
 git commit -m "chore(impl): publish service contract for {service-name}"
@@ -424,8 +432,15 @@ The `(impl):` scope triggers the post-commit hook to update `docs/.spec-sync`.
         <domain-name>.md       ← Level 3: API list per domain
       reference/
         contract.yaml          ← Level 4: full OpenAPI schemas (grepped on demand)
-  smart-doc.json               ← smart-doc config (committed alongside contract)
+  smart-doc.json               ← build config, stays in microservice repo only
 ```
+
+**What gets shipped to the consuming repo** (Step 9 ship, or manual copy):
+```
+docs/contracts/<service-name>/   ← only this directory
+```
+
+`smart-doc.json` and `pom.xml` changes stay in the microservice repo. Never shipped.
 
 ---
 
