@@ -18,20 +18,10 @@ cargo install codeskel
 codeskel scan /path/to/project
 ```
 
-Prints a small summary JSON to stdout and writes the full cache to `.codeskel/cache.json`:
+Prints a compact JSON summary to stdout and writes the full cache to `.codeskel/cache.json`. All codeskel commands emit compact (single-line) JSON — designed for machine consumption:
 
 ```json
-{
-  "project_root": "/abs/path/to/project",
-  "detected_languages": ["java", "python"],
-  "cache": "/abs/path/to/project/.codeskel/cache.json",
-  "stats": {
-    "total_files": 142,
-    "skipped_covered": 18,
-    "skipped_generated": 5,
-    "to_comment": 119
-  }
-}
+{"project_root":"/abs/path/to/project","detected_languages":["java","python"],"cache":"/abs/path/to/project/.codeskel/cache.json","stats":{"total_files":142,"skipped_covered":18,"skipped_generated":5,"to_comment":119}}
 ```
 
 `stats.to_comment` is the loop bound the LLM uses — files already well-commented or auto-generated are excluded.
@@ -43,6 +33,7 @@ Prints a small summary JSON to stdout and writes the full cache to `.codeskel/ca
     --include <GLOB>        Only include files matching glob (repeatable)
     --exclude <GLOB>        Exclude files matching glob (repeatable)
     --min-coverage <0-1>    Skip files above this docstring coverage [default: 0.8]
+    --min-docstring-words <N>  Min prose word count to treat a docstring as adequate (0 = presence only) [default: 10]
     --cache-dir <DIR>       Where to write cache [default: <project_root>/.codeskel]
 -v, --verbose               Print progress to stderr
 ```
@@ -60,6 +51,15 @@ codeskel get .codeskel/cache.json --path src/main/java/com/example/model/User.ja
 
 # Signatures of direct dependencies (LLM context before commenting a file)
 codeskel get .codeskel/cache.json --deps src/main/java/com/example/model/User.java
+
+# Count of files in the transitive dependency chain (deepest dep first)
+codeskel get .codeskel/cache.json --chain src/main/java/com/example/service/UserService.java
+
+# Fetch one dep by position in the chain (0-based)
+codeskel get .codeskel/cache.json --chain src/main/java/com/example/service/UserService.java --index 0
+
+# Symbol references from a file's body to its internal deps (Java only)
+codeskel get .codeskel/cache.json --refs src/main/java/com/example/service/UserService.java
 ```
 
 `--index` and `--path` return the full file entry:
@@ -72,7 +72,9 @@ codeskel get .codeskel/cache.json --deps src/main/java/com/example/model/User.ja
   "comment_coverage": 0.1,
   "skip": false,
   "cycle_warning": false,
+  "file_kind": "class",
   "internal_imports": ["src/main/java/com/example/base/Entity.java"],
+  "reverse_deps": [],
   "signatures": [
     {
       "kind": "class",
@@ -108,6 +110,28 @@ codeskel get .codeskel/cache.json --deps src/main/java/com/example/model/User.ja
 annotations like `@RequestMapping("/users")`, or `null` for markers or named-only
 arguments. `docstring_text` is present when `has_docstring` is true.
 
+`--chain` returns the count of files in a file's transitive dependency chain (deepest dep first, topo order):
+
+```json
+{ "for": "src/main/java/com/example/service/UserService.java", "count": 3 }
+```
+
+`--chain --index <i>` returns the full `FileEntry` for the i-th dep in that chain — identical format to `--index`. Index out of range → exit code 1.
+
+`--refs` performs static analysis on the file's body and returns, for each internal dep, the symbol names actually referenced there (Java only; other languages emit `{ "for": ..., "refs": {} }`):
+
+```json
+{
+  "for": "src/main/java/com/example/service/UserService.java",
+  "refs": {
+    "src/main/java/com/example/model/User.java": ["User", "getEmail"],
+    "src/main/java/com/example/repo/UserRepository.java": ["UserRepository", "findById", "save"]
+  }
+}
+```
+
+Keys are relative paths of internal dep files. Values are symbol names (class, method, field, constructor) that appear in the dep's cached signatures and are actually used in the analyzed file. External/stdlib references are silently ignored.
+
 `--deps` returns signature summaries of all direct dependencies — what the LLM loads as context before commenting a file:
 
 ```json
@@ -122,6 +146,23 @@ arguments. `docstring_text` is present when `has_docstring` is true.
 }
 ```
 
+For **interfaces**, **abstract classes**, and **annotation definitions** (`file_kind` is `"interface"`, `"abstract_class"`, or `"annotation"`), `--deps` also includes a `reverse_dep_signatures` field — signatures of files that implement, extend, or apply this type. This gives the LLM meaningful context for files that have few or no imports of their own:
+
+```json
+{
+  "for": "src/main/java/com/example/repo/UserRepository.java",
+  "dependencies": [],
+  "reverse_dep_signatures": [
+    {
+      "path": "src/main/java/com/example/repo/JpaUserRepository.java",
+      "signatures": [ ... ]
+    }
+  ]
+}
+```
+
+Up to 5 reverse deps are included, sorted by path. Same-package `implements`/`extends` relationships are resolved without requiring an explicit import statement (Java only; other languages to follow).
+
 ### 3. Rescan after commenting
 
 After the LLM writes docstrings to a file, update the cache:
@@ -132,7 +173,56 @@ codeskel rescan .codeskel/cache.json src/main/java/com/example/model/User.java
 
 This re-parses the file and updates its coverage and signatures in-place so downstream dependents have accurate context.
 
-### 4. Extract Maven POM metadata
+### 4. Drive the commenting loop with `next`
+
+`codeskel next` fuses rescan + advance + fetch into one atomic call, making rescan structurally unavoidable. The cursor is stored in `.codeskel/session.json` alongside the cache. A fresh `scan` always clears the session.
+
+```bash
+codeskel next [--cache .codeskel/cache.json]
+```
+
+**First call (bootstrap):** no previous file to rescan; returns index 0.
+
+**Subsequent calls:** rescans the file returned by the previous call, advances the cursor, and returns the next file.
+
+**When exhausted:** returns `{ "done": true }` and clears the session.
+
+**Output:**
+
+```json
+{"done":false,"mode":"project","index":1,"remaining":117,"file":{"path":"src/main/java/com/example/model/User.java","language":"java","comment_coverage":0.1,"signatures":[...]},"deps":[{"path":"src/main/java/com/example/base/Entity.java","signatures":[...]}]}
+```
+
+Output is compact JSON (single line). The `file` object contains `path`, `language`, `package` (Java only), `comment_coverage`, `cycle_warning` (omitted when false), and `signatures`. It does **not** include `skip` (always false in the loop) or `internal_imports` (redundant with `deps`).
+
+`deps[].signatures` are filtered to only the symbols the current file actually references, plus top-level type declarations (class/struct/interface/etc.) as structural anchors. This means Claude sees exactly the context it needs without noise from unreferenced methods. Signatures in `deps` include `docstring_text` when present so Claude can read existing documentation without opening dep files. `has_docstring` and `line` are omitted from dep signatures.
+
+When the current file is an interface, abstract class, or annotation (`file_kind` is `"interface"`, `"abstract_class"`, or `"annotation"`), the output also includes a `reverse_deps` field with signatures of implementing/extending files (up to 5, Java only). This gives the LLM meaningful context for types that have no imports of their own:
+
+```json
+{"done":false,"mode":"project","index":0,"remaining":3,"file":{"path":"src/.../UserRepository.java","language":"java","comment_coverage":0.0,"signatures":[...]},"deps":[],"reverse_deps":[{"path":"src/.../JpaUserRepository.java","signatures":[...]}]}
+```
+
+`file` and `deps` are `null` / `[]` when `done` is `true`. `reverse_deps` is omitted when empty. `remaining` counts files not yet returned. `mode` is `"project"` or `"targeted"`.
+
+**Options:**
+
+```
+--cache <PATH>    Path to cache.json [default: .codeskel/cache.json]
+--target <FILE>   Restrict loop to the transitive dep chain of FILE (relative path)
+```
+
+**Targeted mode** — pass `--target <file>` to restrict the loop to one file's transitive dep chain. The session walks deps deepest-first, then the target itself:
+
+```bash
+codeskel next --target src/main/java/com/example/service/UserService.java
+```
+
+Output is identical in shape but `mode` is `"targeted"`. On the first call the cursor is placed at dep index 0; subsequent calls rescan the previous file and advance. When exhausted, returns `{ "done": true, "mode": "targeted", ... }` and clears the session.
+
+Switching `--target` values or omitting `--target` after a targeted session automatically restarts the appropriate mode.
+
+### 5. Extract Maven POM metadata
 
 ```bash
 codeskel pom /path/to/project [--controller-path src/main/java/Controller.java]
@@ -162,6 +252,23 @@ Reads `pom.xml` directly — no cache needed. Outputs compact JSON:
 
 ## How the `comment` skill uses codeskel
 
+**Project mode** — comment all files in topo order using `next`:
+
+```
+1. codeskel scan <project>          → { cache, stats.to_comment = N }
+2. Loop:
+   a. codeskel next                 → { done, file, deps, remaining }
+   b. If done: break
+   c. Read full source (file.path)
+   d. Generate docstrings (LLM)
+   e. Write file back
+   (rescan of the current file happens automatically on the next `next` call)
+```
+
+`next` replaces the separate `get --index`, `get --deps`, and `rescan` calls from the older loop, and makes rescan structurally unavoidable.
+
+**Alternative (manual loop)** — same result using individual commands:
+
 ```
 1. codeskel scan <project>          → { cache, stats.to_comment = N }
 2. For i = 0..N-1:
@@ -173,7 +280,40 @@ Reads `pom.xml` directly — no cache needed. Outputs compact JSON:
    f. codeskel rescan <cache> <path>         → update cache
 ```
 
-The LLM context at any step contains: one summary + one file's details + its deps' signatures + the source. No large arrays, constant memory regardless of project size.
+**Targeted single-file mode** — comment one file and its transitive dep chain, touching only the symbols actually referenced. Use `next --target` to drive the loop (rescan is automatic, same as project mode):
+
+```
+1. codeskel scan <project>
+2. Loop:
+   a. codeskel next --target <file>   → { done, mode: "targeted", file, deps, remaining }
+   b. If done: break
+   c. Read full source (file.path)
+   d. Generate docstrings for items where has_docstring: false
+      (deps already filtered to referenced symbols — no extra --refs call needed)
+   e. Write file back
+   (rescan of the current file happens automatically on the next call)
+```
+
+**Alternative (manual loop)** — equivalent using individual commands:
+
+```
+1. codeskel scan <project>
+2. codeskel get <cache> --chain <target>     → { count: N }
+   If N = 0: skip to step 5.
+3. Build refs_map upfront (one --refs call per chain file + target):
+   codeskel get <cache> --refs <file>        → accumulate refs_map per dep
+4. For i = 0..N-1:
+   a. codeskel get <cache> --chain <target> --index i  → dep entry
+   b. codeskel get <cache> --deps <dep_path>           → dep's dep signatures
+   c. Read dep source; comment only items where has_docstring: false
+      AND name ∈ refs_map[dep_path]
+   d. codeskel rescan <cache> <dep_path>
+5. Comment target file in full (all undocumented items):
+   codeskel get <cache> --deps <target>      → context
+   Read + comment target; codeskel rescan <cache> <target>
+```
+
+Both modes keep LLM context constant — at most one file entry + its deps' signatures + source at any point, regardless of project or chain size.
 
 ## How the `generate-microservice-skill` uses codeskel
 

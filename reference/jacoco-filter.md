@@ -9,20 +9,26 @@ A fast, cross-platform CLI tool that parses JaCoCo XML coverage reports, filters
 - Scores each method: `complexity × (missed_lines / total_lines)`
 - Reports overall and per-class line coverage percentage (`--summary`)
 - Outputs compact or pretty-printed JSON
+- Limits output to the top-k highest-scoring methods (`--top-k`, default 5)
 - Supports a minimum score threshold to focus on high-priority gaps
 - Single static binary — no runtime dependencies
 
 ## Quick Start
 
-### 1. Build
+### 1. Install
 
 ```bash
 git clone <repo-url>
 cd jacoco-filter
-cargo build --release
+cargo install --path .
 ```
 
-The binary will be at `target/release/jacoco-filter`.
+The `jacoco-filter` binary will be installed to `~/.cargo/bin/` and available on your `PATH`. Alternatively, build without installing:
+
+```bash
+cargo build --release
+# Binary at target/release/jacoco-filter
+```
 
 ### 2. Generate a JaCoCo report
 
@@ -42,6 +48,12 @@ jacoco-filter target/site/jacoco/jacoco.xml --summary --pretty
 
 # Only show methods with a score above 1.5
 jacoco-filter target/site/jacoco/jacoco.xml --min-score 1.5 --pretty
+
+# Show top 10 methods instead of the default 5
+jacoco-filter target/site/jacoco/jacoco.xml --top-k 10
+
+# Show all methods (no limit)
+jacoco-filter target/site/jacoco/jacoco.xml --top-k 0
 
 # Pretty-print and save to a file
 jacoco-filter target/site/jacoco/jacoco.xml --summary --pretty --output coverage-gaps.json
@@ -139,6 +151,7 @@ Arguments:
 Options:
   --output <path>       Write JSON to file (default: stdout)
   --min-score <float>   Exclude methods below this score (default: 0.0)
+  --top-k <n>           Limit to top-n highest-scoring methods; 0 = no limit (default: 5)
   --pretty              Pretty-print JSON output
   --summary             Include line-coverage summary in output
   -h, --help            Print help
