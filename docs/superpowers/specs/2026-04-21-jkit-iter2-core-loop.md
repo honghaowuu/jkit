@@ -9,14 +9,15 @@
 
 ## Overview
 
-Implements the two skills that form the primary daily development loop:
+Implements the three skills that form the primary daily development loop:
 
-1. **`spec-delta`** — computes the requirements delta since the last implementation, drives the full cycle from diff to approved plan, then hands off to `java-tdd`
-2. **`java-tdd`** — implements each plan task via RED/GREEN/REFACTOR, extends with JaCoCo coverage gap analysis, then hands off to `java-verify`
+1. **`spec-delta`** — computes the requirements delta since the last implementation, clarifies, writes change-summary, then hands off to `sql-migration` (if schema changes) and `writing-plans`
+2. **`sql-migration`** — standalone skill for DB schema migration: introspects live schema, generates migration-preview.md and SQL, gets approval, moves file to Flyway directory. Invoked by spec-delta when schema changes are detected; also usable standalone.
+3. **`java-tdd`** — implements each plan task via RED/GREEN/REFACTOR, extends with JaCoCo coverage gap analysis, then hands off to `java-verify`
 
 After this iteration, the core workflow is fully operational:
 ```
-edit docs/domains/ → commit → /spec-delta → plan approved → java-tdd → java-verify → commit
+edit docs/domains/ → commit → spec-delta → [sql-migration] → plan approved → java-tdd → java-verify → commit
 ```
 
 ---
@@ -25,7 +26,8 @@ edit docs/domains/ → commit → /spec-delta → plan approved → java-tdd →
 
 | File | Purpose |
 |------|---------|
-| `skills/spec-delta/SKILL.md` | Spec diff → clarify → change-summary → SQL migration → plan |
+| `skills/spec-delta/SKILL.md` | Spec diff → clarify → change-summary → plan |
+| `skills/sql-migration/SKILL.md` | DB schema migration: introspect → preview → generate → approve → move |
 | `skills/java-tdd/SKILL.md` | TDD per task + JaCoCo coverage gap loop |
 
 ---
@@ -66,10 +68,7 @@ spec-delta is the orchestration entry point, not a task implementation skill.
 - [ ] Create run directory
 - [ ] Write change-summary.md
 - [ ] Get change-summary approval
-- [ ] (if schema changes) Introspect live DB schema
-- [ ] (if schema changes) Write migration-preview.md
-- [ ] (if schema changes) Get migration-preview approval
-- [ ] (if schema changes) Generate migration SQL and get approval
+- [ ] (if schema changes) Invoke sql-migration
 - [ ] Invoke writing-plans
 - [ ] Get plan approval
 - [ ] Invoke java-tdd
@@ -91,7 +90,7 @@ digraph spec_delta {
     "Write change-summary.md" [shape=box];
     "HARD-GATE: change-summary approval" [shape=box style=filled fillcolor=lightyellow];
     "Schema changes?" [shape=diamond];
-    "SQL migration sub-flow" [shape=box];
+    "REQUIRED SUB-SKILL: sql-migration" [shape=doublecircle];
     "Invoke writing-plans" [shape=box];
     "HARD-GATE: plan approval" [shape=box style=filled fillcolor=lightyellow];
     "Invoke java-tdd" [shape=doublecircle];
@@ -109,9 +108,9 @@ digraph spec_delta {
     "Write change-summary.md" -> "HARD-GATE: change-summary approval";
     "HARD-GATE: change-summary approval" -> "Schema changes?" [label="approved"];
     "HARD-GATE: change-summary approval" -> "Write change-summary.md" [label="edit requested"];
-    "Schema changes?" -> "SQL migration sub-flow" [label="yes"];
+    "Schema changes?" -> "REQUIRED SUB-SKILL: sql-migration" [label="yes"];
     "Schema changes?" -> "Invoke writing-plans" [label="no"];
-    "SQL migration sub-flow" -> "Invoke writing-plans";
+    "REQUIRED SUB-SKILL: sql-migration" -> "Invoke writing-plans";
     "Invoke writing-plans" -> "HARD-GATE: plan approval";
     "HARD-GATE: plan approval" -> "Invoke java-tdd" [label="approved"];
     "HARD-GATE: plan approval" -> "Invoke writing-plans" [label="edit requested"];
@@ -230,45 +229,13 @@ B) Edit — tell me what to change
 Do NOT invoke writing-plans or proceed to SQL migration until the human approves change-summary.md.
 </HARD-GATE>
 
-**Step 10: SQL migration sub-flow (if schema changes flagged)**
+**Step 10: SQL migration handoff (if schema changes flagged)**
 
-Triggered when Step 6 flagged schema changes, after change-summary approval.
+**REQUIRED SUB-SKILL: invoke `sql-migration`**, passing:
+- The run directory path: `docs/jkit/<run>/`
+- The inferred schema changes from Step 6 (tables/columns added, modified, or dropped)
 
-1. **Live schema introspection** — detect DB type from `pom.xml` JDBC driver, then run read-only `information_schema` query using `$DATABASE_URL` from environment (loaded by direnv):
-   ```bash
-   psql "$DATABASE_URL" -t -c "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '<table>' ORDER BY ordinal_position;"
-   ```
-   Fallback (env vars not in environment): read `.env/local.env` directly.
-   Fallback (DB unreachable): warn and continue with spec-only inference.
-
-2. Write `docs/jkit/<run>/migration-preview.md`:
-   ```markdown
-   ## Migration Preview: <feature>
-
-   | Change | Type | Detail |
-   |--------|------|--------|
-   | `bulk_invoice` | CREATE TABLE | id, tenant_id, status, created_at |
-   | `invoice.bulk_id` | ADD COLUMN | FK to bulk_invoice(id), nullable |
-   ```
-   Omit columns already present in live DB.
-
-3. Tell human: `"Written to docs/jkit/<run>/migration-preview.md"`
-   ```
-   A) Approve as-is (recommended)
-   B) Edit preview first
-   C) Skip migration
-   ```
-
-4. On approval: generate `docs/jkit/<run>/migration/V<YYYYMMDD>_NNN__<feature>.sql`
-
-5. Tell human: `"Migration SQL written to docs/jkit/<run>/migration/<file>.sql"`
-   ```
-   A) Looks good — move to src/main/resources/db/migration/ (recommended)
-   B) Edit the SQL first
-   C) Abort
-   ```
-
-6. On approval: move SQL file to `src/main/resources/db/migration/`. The file is included in the final implementation commit.
+sql-migration handles introspection, migration-preview.md, SQL generation, approval, and file placement. Return here after sql-migration completes.
 
 **Step 11: Invoke writing-plans**
 
@@ -301,6 +268,128 @@ On approval: **REQUIRED SUB-SKILL: invoke `java-tdd`** — java-tdd will ask exe
 | Superpowers skill | How used |
 |---|---|
 | `superpowers:writing-plans` | Plan location + header note overridden |
+
+---
+
+## `sql-migration` Skill
+
+### Frontmatter
+
+```yaml
+---
+name: sql-migration
+description: Use when a spec change implies database schema changes and a Flyway migration needs to be generated, reviewed, and placed.
+---
+```
+
+### Skill Type: Technique/Pattern with HARD-GATEs
+
+**Announcement:** At start: *"I'm using the sql-migration skill to generate the Flyway migration for the schema changes."*
+
+### Checklist
+
+- [ ] Introspect live schema
+- [ ] Write migration-preview.md
+- [ ] Get preview approval
+- [ ] Generate migration SQL
+- [ ] Get SQL approval
+- [ ] Move to Flyway directory
+
+### Process Flow
+
+```dot
+digraph sql_migration {
+    "Detect DB type from pom.xml" [shape=box];
+    "Introspect live schema\n(information_schema)" [shape=box];
+    "DB unreachable?" [shape=diamond];
+    "Warn: spec-only inference" [shape=box];
+    "Write migration-preview.md" [shape=box];
+    "HARD-GATE: preview approval" [shape=box style=filled fillcolor=lightyellow];
+    "Generate migration SQL\n(docs/jkit/<run>/migration/)" [shape=box];
+    "HARD-GATE: SQL approval" [shape=box style=filled fillcolor=lightyellow];
+    "Move to src/main/resources/db/migration/" [shape=box];
+    "Done (return to caller)" [shape=doublecircle];
+
+    "Detect DB type from pom.xml" -> "Introspect live schema\n(information_schema)";
+    "Introspect live schema\n(information_schema)" -> "DB unreachable?";
+    "DB unreachable?" -> "Warn: spec-only inference" [label="yes"];
+    "DB unreachable?" -> "Write migration-preview.md" [label="no"];
+    "Warn: spec-only inference" -> "Write migration-preview.md";
+    "Write migration-preview.md" -> "HARD-GATE: preview approval";
+    "HARD-GATE: preview approval" -> "Generate migration SQL\n(docs/jkit/<run>/migration/)" [label="approved"];
+    "HARD-GATE: preview approval" -> "Write migration-preview.md" [label="edit requested"];
+    "HARD-GATE: preview approval" -> "Done (return to caller)" [label="skip"];
+    "Generate migration SQL\n(docs/jkit/<run>/migration/)" -> "HARD-GATE: SQL approval";
+    "HARD-GATE: SQL approval" -> "Move to src/main/resources/db/migration/" [label="approved"];
+    "HARD-GATE: SQL approval" -> "Generate migration SQL\n(docs/jkit/<run>/migration/)" [label="edit requested"];
+    "Move to src/main/resources/db/migration/" -> "Done (return to caller)";
+}
+```
+
+### Detailed Flow
+
+**Step 1: Introspect live schema**
+
+Detect DB type from `pom.xml` JDBC driver artifact (e.g., `postgresql`, `mysql`). Run a read-only `information_schema` query using `$DATABASE_URL` from environment (loaded by direnv):
+
+```bash
+psql "$DATABASE_URL" -t -c \
+  "SELECT column_name, data_type FROM information_schema.columns \
+   WHERE table_name = '<table>' ORDER BY ordinal_position;"
+```
+
+Fallback order:
+1. Env vars not in environment → read `.env/local.env` directly
+2. DB unreachable → warn: *"DB not reachable — inferring schema changes from spec only. Review migration-preview.md carefully."* Continue with spec-only inference.
+
+**Step 2: Write migration-preview.md**
+
+Write `docs/jkit/<run>/migration-preview.md`. Omit columns already present in the live DB:
+
+```markdown
+## Migration Preview: <feature>
+
+| Change | Type | Detail |
+|--------|------|--------|
+| `bulk_invoice` | CREATE TABLE | id, tenant_id, status, created_at |
+| `invoice.bulk_id` | ADD COLUMN | FK to bulk_invoice(id), nullable |
+```
+
+Tell human: `"Written to docs/jkit/<run>/migration-preview.md"`
+
+```
+A) Approve as-is (recommended)
+B) Edit preview first
+C) Skip migration
+```
+
+<HARD-GATE>
+Do NOT generate migration SQL until the human approves migration-preview.md.
+</HARD-GATE>
+
+On C: return to caller immediately (no SQL generated).
+
+**Step 3: Generate migration SQL**
+
+Generate `docs/jkit/<run>/migration/V<YYYYMMDD>_NNN__<feature>.sql` from the approved preview. `NNN` = next sequential index in `src/main/resources/db/migration/` (padded to 3 digits).
+
+Tell human: `"Migration SQL written to docs/jkit/<run>/migration/<file>.sql"`
+
+```
+A) Looks good — move to src/main/resources/db/migration/ (recommended)
+B) Edit the SQL first
+C) Abort
+```
+
+<HARD-GATE>
+Do NOT move the SQL file until the human approves it.
+</HARD-GATE>
+
+**Step 4: Move to Flyway directory**
+
+On approval: move SQL file to `src/main/resources/db/migration/`. The file will be included in the caller's implementation commit.
+
+Return to caller.
 
 ---
 
@@ -361,12 +450,11 @@ No exceptions:
 - [ ] Choose execution mode
 - [ ] Verify JaCoCo plugin
 - [ ] Implement via superpowers:test-driven-development per task
-- [ ] Run quality gate
 - [ ] Run mvn test + jacoco:report
 - [ ] Run jkit coverage
-- [ ] Fill coverage gaps via TDD
+- [ ] Fill unit coverage gaps via TDD
 - [ ] Repeat until no gaps above threshold
-- [ ] Invoke java-verify
+- [ ] Invoke api-scenarios
 - [ ] Final commit
 
 ### Process Flow
@@ -378,28 +466,26 @@ digraph java_tdd {
     "Ask execution mode" [shape=box];
     "Verify JaCoCo" [shape=box];
     "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)" [shape=box];
-    "Quality gate\n(Checkstyle/PMD/SpotBugs)" [shape=box];
-    "mvn clean test jacoco:report" [shape=box];
+    "mvn clean test\njacoco:report" [shape=box];
     "jkit coverage\n--summary --min-score 1.0" [shape=box];
     "Gaps above threshold?" [shape=diamond];
     "TDD per gap" [shape=box];
     "More tasks?" [shape=diamond];
-    "Invoke java-verify" [shape=doublecircle];
+    "Invoke api-scenarios" [shape=doublecircle];
 
     "Load java-coding-standards" -> "Detect plan?";
     "Detect plan?" -> "Ask execution mode" [label="plan found"];
     "Detect plan?" -> "Verify JaCoCo" [label="ad-hoc"];
     "Ask execution mode" -> "Verify JaCoCo";
     "Verify JaCoCo" -> "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)";
-    "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)" -> "Quality gate\n(Checkstyle/PMD/SpotBugs)";
-    "Quality gate\n(Checkstyle/PMD/SpotBugs)" -> "mvn clean test jacoco:report";
-    "mvn clean test jacoco:report" -> "jkit coverage\n--summary --min-score 1.0";
+    "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)" -> "mvn clean test\njacoco:report";
+    "mvn clean test\njacoco:report" -> "jkit coverage\n--summary --min-score 1.0";
     "jkit coverage\n--summary --min-score 1.0" -> "Gaps above threshold?";
     "Gaps above threshold?" -> "TDD per gap" [label="yes"];
-    "TDD per gap" -> "mvn clean test jacoco:report";
+    "TDD per gap" -> "mvn clean test\njacoco:report";
     "Gaps above threshold?" -> "More tasks?" [label="no"];
     "More tasks?" -> "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)" [label="yes"];
-    "More tasks?" -> "Invoke java-verify" [label="no"];
+    "More tasks?" -> "Invoke api-scenarios" [label="no"];
 }
 ```
 
@@ -439,17 +525,7 @@ Check `pom.xml` for JaCoCo Maven plugin. If missing: add from `templates/pom-fra
 
 For each plan task (or ad-hoc description): invoke `superpowers:test-driven-development`. Complete the full RED/GREEN/REFACTOR cycle before proceeding to step 5.
 
-**Step 5: Quality gate**
-
-Scan `pom.xml` for Checkstyle, PMD, SpotBugs plugins.
-
-- None found: offer to add from `templates/pom-fragments/quality.xml`
-  - Declined: skip quality gate, continue to step 6
-  - Accepted: add fragment, then run
-- Run detected tools: `mvn checkstyle:check pmd:check spotbugs:check` (only present ones)
-- Fix failures inline. If new plugins were added, note them in the final commit message.
-
-**Step 6: JaCoCo coverage loop**
+**Step 5: JaCoCo unit coverage loop**
 
 ```bash
 mvn clean test jacoco:report
@@ -469,7 +545,7 @@ Determine progress from durable state: `git log --oneline` for `feat(impl):`/`fi
 
 **Step 8: Invoke java-verify**
 
-**REQUIRED SUB-SKILL: invoke `java-verify`** after all plan tasks pass quality + coverage gates.
+**REQUIRED SUB-SKILL: invoke `api-scenarios`** after all plan tasks pass unit coverage gates. Pass the current run directory and the list of changed domains from `change-summary.md`. api-scenarios will call `java-verify` when done.
 
 **Step 9: Final commit**
 
@@ -487,7 +563,7 @@ The post-commit hook will update `docs/.spec-sync` automatically.
 | `superpowers:test-driven-development` | Full RED/GREEN/REFACTOR per task and per coverage gap |
 | `superpowers:subagent-driven-development` | Subagent-driven execution mode |
 | `superpowers:executing-plans` | Inline execution mode |
-| `superpowers:requesting-code-review` | After all tasks pass — invoked by java-verify (see Iteration 3) |
+| `superpowers:requesting-code-review` | After all tasks pass — invoked by java-verify via api-scenarios (see Iteration 3) |
 
 ---
 
@@ -519,9 +595,10 @@ docs/
 
 ## Commit Convention
 
-This iteration is delivered as two commits (one per skill, or combined):
+This iteration is delivered as two or three commits (one per skill, or combined):
 
 ```
 feat: add spec-delta skill
+feat: add sql-migration skill
 feat: add java-tdd skill
 ```

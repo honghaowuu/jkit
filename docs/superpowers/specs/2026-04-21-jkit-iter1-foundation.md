@@ -53,12 +53,13 @@ Establishes the plugin skeleton: registration, hooks, CLI wrapper, templates, an
   "version": "0.2.0",
   "author": { "name": "honghaowu" },
   "license": "UNLICENSED",
-  "keywords": ["java", "spring-boot", "microservice", "tdd", "contract-testing"],
+  "keywords": ["java", "spring-boot", "microservice", "tdd", "api-scenarios"],
   "skills": [
     { "name": "spec-delta",        "path": "skills/spec-delta" },
+    { "name": "sql-migration",     "path": "skills/sql-migration" },
     { "name": "java-tdd",          "path": "skills/java-tdd" },
     { "name": "java-verify",       "path": "skills/java-verify" },
-    { "name": "contract-testing",  "path": "skills/contract-testing" },
+    { "name": "api-scenarios",  "path": "skills/api-scenarios" },
     { "name": "publish-contract",  "path": "skills/publish-contract" }
   ],
   "hooks": "hooks/hooks.json"
@@ -211,10 +212,10 @@ Single `application.yml` using `${ENV_VAR:default}`. No `application-{profile}.y
 ## Key skills
 
 - **spec-delta** — compute requirements delta since last implementation → drives full spec-to-commit cycle
-- **java-tdd** — TDD implementation with JaCoCo coverage gap analysis
-- **java-verify** — integration + contract test scaffolding
-- **contract-testing** — per-domain API scenario test generation
-- **publish-contract** — generate SKILL.md + openapi.yaml for other services to consume
+- **java-tdd** — TDD implementation with JaCoCo unit coverage gap analysis
+- **api-scenarios** — integration TDD per domain: one RestAssured scenario at a time, RED → GREEN
+- **java-verify** — quality gate: mvn verify + merged coverage check + code review handoff
+- **publish-contract** — generate 4-level progressive disclosure contract for other services to consume
 ```
 
 ### `hooks/post-commit-sync.sh`
@@ -274,11 +275,11 @@ Bundled binaries: `jkit-linux-x86_64`, `jkit-macos-aarch64`, `jkit-windows-x86_6
 
 Skills are invoked via the Claude Code `Skill` tool — no slash commands. Developers trigger skills by name:
 - `spec-delta` — start the implementation loop after spec changes
-- `java-verify` — run integration/contract test verification (standalone or via java-tdd)
-- `contract-testing` — generate API scenario tests for a specific domain (human-initiated per domain)
+- `api-scenarios` — integration TDD for a specific domain (invoked by java-tdd; also usable standalone)
+- `java-verify` — quality gate + code review handoff (invoked by api-scenarios; also usable standalone)
 - `publish-contract` — publish the service contract after API changes
 
-**Note on `java-verify`:** Can be invoked standalone (ad-hoc re-runs, independent verification) or automatically as the final step of `java-tdd`. Both paths are supported.
+**Pipeline:** `spec-delta → [sql-migration] → java-tdd → api-scenarios → java-verify → code review`
 
 ---
 
@@ -309,11 +310,32 @@ Local dev dependencies. At minimum: PostgreSQL on `${DB_PORT:-5432}` with `${DB_
 
 ### `templates/docker-compose.test.yml`
 
-Legacy Spring Boot (< 3.1) test environment. Contains: PostgreSQL + WireMock sidecar + app container (built from `Dockerfile`). App depends on postgres + wiremock. All services connected on a single network. Exposes app on port 8080, WireMock on 8089.
+Legacy Spring Boot (< 3.1) test environment. Contains: PostgreSQL + WireMock sidecar + app container (built from `Dockerfile`). App depends on postgres + wiremock. All services connected on a single network. Exposes app on port 8080, WireMock on 8089, JaCoCo TCP server on port 6300.
+
+App service includes JaCoCo TCP server agent so integration test coverage can be dumped after the test run:
+```yaml
+environment:
+  JAVA_OPTS: >-
+    -javaagent:/jacoco/jacocoagent.jar=output=tcpserver,port=6300,address=*
+volumes:
+  - ./target/jacoco:/jacoco   # jacocoagent.jar mounted from host
+ports:
+  - "6300:6300"
+```
 
 ### `templates/pom-fragments/jacoco.xml`
 
-JaCoCo Maven plugin (`0.8.11`). Two executions: `prepare-agent` (default phase) and `report` (test phase). Generates XML report to `target/site/jacoco/jacoco.xml`.
+JaCoCo Maven plugin (`0.8.11`). Five executions covering both unit and integration test runs:
+
+| Execution ID | Phase | Goal | Purpose |
+|---|---|---|---|
+| `prepare-agent` | `initialize` | `prepare-agent` | Instruments unit tests (sets `argLine` for Surefire) |
+| `prepare-agent-integration` | `pre-integration-test` | `prepare-agent-integration` | Instruments integration tests (sets `argLine` for Failsafe) |
+| `dump` | `post-integration-test` | `dump` | Dumps coverage from JaCoCo TCP server (legacy docker-compose path: `address=localhost`, `port=6300`); no-op if TCP server not running |
+| `merge` | `post-integration-test` | `merge` | Merges `jacoco.exec` + `jacoco-it.exec` → `jacoco-merged.exec` |
+| `report` | `verify` | `report` | Generates XML report from `jacoco-merged.exec` to `target/site/jacoco/jacoco.xml` |
+
+Spring Boot 3.1+ path: `prepare-agent-integration` instruments the same JVM — no TCP dump needed, merge picks up both exec files automatically. Legacy docker-compose path: TCP dump populates `jacoco-it.exec` before merge.
 
 ### `templates/pom-fragments/quality.xml`
 
@@ -341,15 +363,17 @@ Testcontainers BOM `1.19.3` (in `<dependencyManagement>`), plus test-scoped depe
 
 ### `docs/java-coding-standards.md`
 
-Loaded at step 0 by `java-tdd`, `java-verify`, and `contract-testing`. Content: naming conventions (classes PascalCase, methods camelCase, test methods `methodName_scenario`), Spring Boot structure (controllers in `api/` — no business logic, services in service/ — no HTTP concerns), testing rules (unit tests mock all deps, integration tests use real infra, one behavior per test), error handling (RFC 7807 problem details), JPA rules (UUID PKs, Flyway migrations `V<YYYYMMDD>_NNN__<desc>.sql`), logging (SLF4J, no PII/secrets).
+Loaded at step 0 by `java-tdd`, `java-verify`, and `api-scenarios`. Content: naming conventions (classes PascalCase, methods camelCase, test methods `methodName_scenario`), Spring Boot structure (controllers in `api/` — no business logic, services in service/ — no HTTP concerns), testing rules (unit tests mock all deps, integration tests use real infra, one behavior per test), error handling (RFC 7807 problem details), JPA rules (UUID PKs, Flyway migrations `V<YYYYMMDD>_NNN__<desc>.sql`), logging (SLF4J, no PII/secrets).
 
 ### `reference/jkit.md`
 
 CLI reference maintained during development. **Excluded from plugin distribution** — author aid only.
 
 Structure:
-- Subcommand table: `jkit skel`, `jkit skel domains <root>`, `jkit coverage <jacoco.xml>`, `jkit scan spring`, `jkit scan contract`, `jkit scan schema`, `jkit scan project`
+- Subcommand table: `jkit skel`, `jkit skel domains <root>`, `jkit coverage <jacoco.xml>`, `jkit coverage --api <domains-dir> <test-src-dir>`, `jkit scan spring`, `jkit scan contract`, `jkit scan schema`, `jkit scan project`
 - Per-subcommand: flags, output format (JSON), field descriptions
+- `jkit skel <path>`: scans Java source under `<path>`, outputs JSON array of class/method signatures. Each method entry includes `has_docstring` (bool) and `docstring_text` (string, only present when `has_docstring` is true). Used by `publish-contract` for Javadoc quality checks.
+- `jkit coverage --api`: reads all `api-spec.yaml` files under `<domains-dir>`, scans `<test-src-dir>` for RestAssured URL patterns, outputs `{ endpoints_declared, endpoints_tested, gaps: [{method, path, declared_in}] }`
 - Exit codes: 0 = success, 1 = fatal, 2 = partial with warnings
 - JSON output examples for each subcommand
 

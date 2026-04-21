@@ -11,10 +11,17 @@
 
 Implements the two skills that complete the quality assurance story after `java-tdd`:
 
-1. **`java-verify`** — scaffolds and runs integration tests and contract tests; final step before code review
-2. **`contract-testing`** — generates per-domain API scenario tests from `api-spec.yaml`. **Human-initiated and optional per domain** — invoked via `/contract-testing` after a domain's endpoints are implemented. Not automatically invoked by `java-tdd` or `java-verify`.
+1. **`api-scenarios`** — TDD at the HTTP boundary: one RestAssured scenario at a time, RED → GREEN → next scenario. Invoked by `java-tdd` after unit coverage is complete; also usable standalone per domain.
+2. **`java-verify`** — pure quality gate: `mvn verify` (quality plugins + all tests) + merged JaCoCo coverage + API endpoint coverage check + code review handoff.
 
-After this iteration, the full quality arc is: TDD → quality gate → coverage → `java-verify` (integration + contract scaffolding) → code review → (optionally) `/contract-testing` per domain for full API scenario coverage.
+**Pipeline:**
+```
+java-tdd (unit TDD + JaCoCo)
+  → REQUIRED SUB-SKILL: api-scenarios (integration TDD per domain)
+    → REQUIRED SUB-SKILL: java-verify (quality gate + code review)
+```
+
+Each skill enforces a single concern. No skill runs twice. No test generation inside the gate.
 
 ---
 
@@ -22,8 +29,211 @@ After this iteration, the full quality arc is: TDD → quality gate → coverage
 
 | File | Purpose |
 |------|---------|
-| `skills/java-verify/SKILL.md` | Integration + contract test scaffolding; REQUIRED SUB-SKILL: requesting-code-review |
-| `skills/contract-testing/SKILL.md` | Per-domain API scenario test generation |
+| `skills/api-scenarios/SKILL.md` | TDD for API endpoints: one scenario at a time, RED → GREEN |
+| `skills/java-verify/SKILL.md` | Quality gate: mvn verify + coverage checks + code review handoff |
+
+---
+
+## `api-scenarios` Skill
+
+### Frontmatter
+
+```yaml
+---
+name: api-scenarios
+description: Use when generating API scenario integration tests for a specific domain after its endpoints are implemented.
+---
+```
+
+### Skill Type: Discipline-Enforcing
+
+**Announcement:** At start: *"I'm using the api-scenarios skill to implement integration tests for the [domain] domain via TDD."*
+
+### Iron Law
+
+```
+NO INTEGRATION TEST WITHOUT A FAILING HTTP TEST FIRST.
+
+Write the RestAssured assertion after the endpoint already passes? Delete it. Start over.
+
+No exceptions:
+- Don't generate multiple tests at once then fix failures
+- Don't write "placeholder" tests that always pass
+- One scenario → RED → GREEN → next scenario
+```
+
+### Rationalization Table
+
+| Excuse | Reality |
+|--------|---------|
+| "The unit tests already cover this logic" | Unit tests mock HTTP. Integration tests verify the actual endpoint wires correctly end-to-end. |
+| "I'll write all scenarios first, then run them" | Batch generation produces batch failures. You lose the signal of which scenario caused what. |
+| "The happy path passes, the error cases are obvious" | Auth failures, validation edge cases, and missing headers are where bugs live. Write the test. |
+| "This endpoint is simple, one test is enough" | Each scenario is a contract. Simple endpoints have the same contract obligations. |
+
+### Checklist
+
+- [ ] Load java-coding-standards
+- [ ] Detect Spring Boot version + prerequisites
+- [ ] Extract changed endpoints
+- [ ] TDD loop: per endpoint, per scenario
+- [ ] Invoke java-verify
+
+### Process Flow
+
+```dot
+digraph api_scenarios {
+    "Load java-coding-standards" [shape=box];
+    "Detect SB version\n+ prerequisites" [shape=box];
+    "Extract changed endpoints\n(spec diff or ad-hoc)" [shape=box];
+    "Endpoints to test?" [shape=diamond];
+    "Done → invoke java-verify" [shape=doublecircle];
+    "Next scenario for endpoint" [shape=box];
+    "Show scenario to human\n(lightweight gate)" [shape=box];
+    "Write failing RestAssured test" [shape=box];
+    "Run test → RED?" [shape=diamond];
+    "Test is wrong — rewrite it" [shape=box];
+    "Fix until GREEN" [shape=box];
+    "More scenarios\nfor this endpoint?" [shape=diamond];
+    "More endpoints?" [shape=diamond];
+
+    "Load java-coding-standards" -> "Detect SB version\n+ prerequisites";
+    "Detect SB version\n+ prerequisites" -> "Extract changed endpoints\n(spec diff or ad-hoc)";
+    "Extract changed endpoints\n(spec diff or ad-hoc)" -> "Endpoints to test?";
+    "Endpoints to test?" -> "Done → invoke java-verify" [label="none"];
+    "Endpoints to test?" -> "Next scenario for endpoint" [label="yes"];
+    "Next scenario for endpoint" -> "Show scenario to human\n(lightweight gate)";
+    "Show scenario to human\n(lightweight gate)" -> "Write failing RestAssured test" [label="approved"];
+    "Show scenario to human\n(lightweight gate)" -> "Next scenario for endpoint" [label="skip"];
+    "Write failing RestAssured test" -> "Run test → RED?";
+    "Run test → RED?" -> "Fix until GREEN" [label="yes"];
+    "Run test → RED?" -> "Test is wrong — rewrite it" [label="no (green immediately)"];
+    "Test is wrong — rewrite it" -> "Run test → RED?";
+    "Fix until GREEN" -> "More scenarios\nfor this endpoint?";
+    "More scenarios\nfor this endpoint?" -> "Next scenario for endpoint" [label="yes"];
+    "More scenarios\nfor this endpoint?" -> "More endpoints?" [label="no"];
+    "More endpoints?" -> "Next scenario for endpoint" [label="yes"];
+    "More endpoints?" -> "Done → invoke java-verify" [label="no"];
+}
+```
+
+### Detailed Flow
+
+**Step 0: Load java-coding-standards**
+
+Read `<plugin-root>/docs/java-coding-standards.md`. Apply all rules.
+
+**Step 1: Detect Spring Boot version + prerequisites**
+
+Read `<parent><version>` from `pom.xml`.
+
+| Spring Boot version | Testing strategy |
+|---|---|
+| 3.1+ | `@SpringBootTest(RANDOM_PORT)` + Testcontainers (`@ServiceConnection`) + RestAssured |
+| < 3.1 | `docker-compose.test.yml` → RestAssured against running container |
+
+**Spring Boot 3.1+:** Check `pom.xml` for Testcontainers, RestAssured, WireMock. If missing: add from `templates/pom-fragments/testcontainers.xml`.
+
+**Spring Boot < 3.1:** Resolve container runtime:
+1. `docker compose` / `docker-compose`
+2. `podman compose`
+3. Neither → stop: *"No container runtime found. Install Docker or Podman and re-run."*
+
+Check `docker-compose.test.yml` exists. If missing: copy from `templates/docker-compose.test.yml`.
+
+**Step 2: Extract changed endpoints**
+
+**Spec-delta driven (called by java-tdd):** Read changed domains from the current run's `change-summary.md`. For each changed domain:
+```bash
+git diff $(cat docs/.spec-sync) HEAD -- docs/domains/<domain>/api-spec.yaml
+```
+Extract only added or modified endpoints. Unchanged endpoints already have tests — do NOT regenerate.
+
+**Ad-hoc (human-initiated):** Ask which domain and which endpoints to cover.
+
+If no changed API endpoints → complete immediately, invoke `java-verify`.
+
+**Step 3: TDD loop**
+
+For each endpoint, determine scenarios in order:
+1. Happy path
+2. Input validation failures (400/422) — one per distinct validation rule
+3. Auth failures (401/403) where applicable
+4. Not found (404) where applicable
+5. Business-specific edge cases from `api-spec.yaml`
+
+For each scenario:
+
+**Lightweight gate** — announce before writing:
+> "Next: `POST /invoices/bulk` — happy path (valid list of 3 → 201 + invoice IDs). Write this test?
+> A) Yes (recommended)
+> B) Edit this scenario
+> C) Skip endpoint"
+
+**Write the failing test** targeting exactly this scenario. One test method, one assertion.
+
+**Run:**
+```bash
+# SB 3.1+
+JKIT_ENV=test direnv exec . mvn test -Dtest=<Domain>IntegrationTest#<methodName>
+
+# SB < 3.1
+<runtime> compose -f docker-compose.test.yml up -d
+JKIT_ENV=test direnv exec . mvn test -Dtest=<Domain>IntegrationTest#<methodName>
+```
+
+- **RED (compilation or assertion failure):** expected — continue to fix.
+- **GREEN immediately:** the test is wrong — it proves nothing. Rewrite it to actually fail.
+
+Fix production code or test setup until GREEN. Then move to next scenario.
+
+**Test class location:** `src/test/java/<group-path>/<service>/<domain>/<Domain>IntegrationTest.java`
+
+**Spring Boot 3.1+ template:**
+```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@Testcontainers
+class BillingIntegrationTest {
+    @Container @ServiceConnection
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15");
+
+    @RegisterExtension
+    static WireMockExtension externalSvc = WireMockExtension.newInstance()
+        .options(wireMockConfig().dynamicPort()).build();
+
+    @LocalServerPort int port;
+    @BeforeEach void setup() { RestAssured.port = port; }
+
+    @Test void bulkInvoice_happyPath() { /* given/when/then */ }
+}
+```
+
+**Spring Boot < 3.1 template:**
+```java
+class BillingIntegrationTest {
+    static String baseUri = System.getenv().getOrDefault("SERVICE_BASE_URI", "http://localhost:8080");
+    @BeforeAll static void setup() { RestAssured.baseURI = baseUri; }
+
+    @Test void bulkInvoice_happyPath() { /* given/when/then */ }
+}
+```
+
+**Failure classification:**
+- Compilation failure or wrong assertion → fix generated test. Do NOT change production code for a test bug.
+- Production code fails the correct assertion → fix production code via `superpowers:systematic-debugging`.
+- After one self-fix pass still failing → invoke `superpowers:systematic-debugging`.
+
+**Step 4: Invoke java-verify**
+
+**REQUIRED SUB-SKILL: invoke `java-verify`** after all changed endpoints are covered.
+
+api-scenarios does NOT own the commit. The commit is `java-tdd`'s responsibility.
+
+### Superpowers Integration
+
+| Superpowers skill | How used |
+|---|---|
+| `superpowers:systematic-debugging` | When production code fails a correct integration test after one self-fix pass |
 
 ---
 
@@ -34,56 +244,48 @@ After this iteration, the full quality arc is: TDD → quality gate → coverage
 ```yaml
 ---
 name: java-verify
-description: Use when verifying integration and contract test coverage after java-tdd completes, or when explicitly asked to verify integration tests.
+description: Use when verifying all quality gates and coverage after api-scenarios completes, or when explicitly asked to run the full verification suite.
 ---
 ```
 
-### Skill Type: Technique/Pattern with HARD-GATEs
+### Skill Type: Technique/Pattern
 
-**Announcement:** At start: *"I'm using the java-verify skill to check integration and contract test coverage."*
+**Announcement:** At start: *"I'm using the java-verify skill to run quality gates and coverage checks."*
 
 ### Checklist
 
 - [ ] Load java-coding-standards
-- [ ] jkit scan spring
-- [ ] jkit scan contract
-- [ ] jkit scan project
-- [ ] Scaffold integration tests (if missing)
-- [ ] Scaffold contract tests (if missing)
+- [ ] Ensure quality plugins
 - [ ] Run mvn verify
-- [ ] Fix failures
+- [ ] Check merged JaCoCo coverage
+- [ ] Check API endpoint coverage
+- [ ] Fix failures or note gaps
+- [ ] Invoke requesting-code-review
 
 ### Process Flow
 
 ```dot
 digraph java_verify {
     "Load java-coding-standards" [shape=box];
-    "jkit scan spring\njkit scan contract\njkit scan project" [shape=box];
-    "Integration tests missing?" [shape=diamond];
-    "Scaffold *IT.java classes" [shape=box];
-    "HARD-GATE: scaffold approval" [shape=box style=filled fillcolor=lightyellow];
-    "Contract tests missing?" [shape=diamond];
-    "Scaffold WireMock/SCC files" [shape=box];
-    "HARD-GATE: scaffold approval" [shape=box style=filled fillcolor=lightyellow label="HARD-GATE: contract scaffold approval"];
-    "mvn verify -DskipUnitTests" [shape=box];
-    "Tests pass?" [shape=diamond];
-    "Fix failures inline" [shape=box];
+    "Ensure quality plugins\n(Checkstyle/PMD/SpotBugs)" [shape=box];
+    "mvn verify" [shape=box];
+    "jkit coverage (merged jacoco)\njkit coverage --api" [shape=box];
+    "Failures?" [shape=diamond];
+    "Fix inline" [shape=box];
+    "Gaps only?" [shape=diamond];
+    "Ask: fix now or note for review" [shape=box];
     "superpowers:requesting-code-review" [shape=doublecircle];
 
-    "Load java-coding-standards" -> "jkit scan spring\njkit scan contract\njkit scan project";
-    "jkit scan spring\njkit scan contract\njkit scan project" -> "Integration tests missing?";
-    "Integration tests missing?" -> "Scaffold *IT.java classes" [label="yes"];
-    "Integration tests missing?" -> "Contract tests missing?" [label="no"];
-    "Scaffold *IT.java classes" -> "HARD-GATE: scaffold approval";
-    "HARD-GATE: scaffold approval" -> "Contract tests missing?" [label="approved / skipped"];
-    "Contract tests missing?" -> "Scaffold WireMock/SCC files" [label="yes"];
-    "Contract tests missing?" -> "mvn verify -DskipUnitTests" [label="no"];
-    "Scaffold WireMock/SCC files" -> "HARD-GATE: contract scaffold approval";
-    "HARD-GATE: contract scaffold approval" -> "mvn verify -DskipUnitTests" [label="approved / skipped"];
-    "mvn verify -DskipUnitTests" -> "Tests pass?";
-    "Tests pass?" -> "superpowers:requesting-code-review" [label="yes"];
-    "Tests pass?" -> "Fix failures inline" [label="no"];
-    "Fix failures inline" -> "mvn verify -DskipUnitTests";
+    "Load java-coding-standards" -> "Ensure quality plugins\n(Checkstyle/PMD/SpotBugs)";
+    "Ensure quality plugins\n(Checkstyle/PMD/SpotBugs)" -> "mvn verify";
+    "mvn verify" -> "jkit coverage (merged jacoco)\njkit coverage --api";
+    "jkit coverage (merged jacoco)\njkit coverage --api" -> "Failures?";
+    "Failures?" -> "Fix inline" [label="yes"];
+    "Fix inline" -> "mvn verify";
+    "Failures?" -> "Gaps only?" [label="no"];
+    "Gaps only?" -> "ask: fix now or note for review" [label="yes"];
+    "Gaps only?" -> "superpowers:requesting-code-review" [label="no"];
+    "ask: fix now or note for review" -> "superpowers:requesting-code-review";
 }
 ```
 
@@ -93,301 +295,59 @@ digraph java_verify {
 
 Read `<plugin-root>/docs/java-coding-standards.md`. Apply all rules.
 
-**Step 1: Scan**
+**Step 1: Ensure quality plugins**
+
+Check `pom.xml` for Checkstyle, PMD, SpotBugs. If missing:
+> "Quality plugins not found.
+> A) Add from templates/pom-fragments/quality.xml (recommended)
+> B) Skip quality gate"
+
+On A: add fragment. Note in final commit message.
+
+**Step 2: Run mvn verify**
 
 ```bash
-bin/jkit scan spring    # repositories, Feign clients, Kafka consumers/producers
-bin/jkit scan contract  # API boundaries: endpoints exposed, Feign clients consumed
-bin/jkit scan project   # existing test layers, maven-failsafe, Testcontainers
+JKIT_ENV=test direnv exec . mvn verify
 ```
 
-Use JSON output to determine what exists and what needs scaffolding.
-
-**Step 2: Integration tests (if missing)**
-
-If `has_integration_tests: false` in `jkit scan project` output:
-
-1. Add `maven-failsafe-plugin` + Testcontainers from `templates/pom-fragments/testcontainers.xml` if absent
-2. For each detected repository, Feign client, and Kafka component: scaffold an `*IT.java` class targeting that component
-
-Scaffold style: **analyze → generate complete test file → write to path**. Not TDD-driven — the infrastructure setup is the hard part, not individual test methods.
-
-Tell human: `"Integration test scaffolds written to src/test/java/.../"`
-
-```
-A) Looks good (recommended)
-B) Edit — tell me what to change
-C) Skip integration tests for now
-```
-
-<HARD-GATE>
-Do NOT run mvn verify until the human reviews the scaffolded test files.
-</HARD-GATE>
-
-On C: continue to step 3.
-
-**Step 3: Contract tests (if missing)**
-
-If `has_contract_tests: false` in `jkit scan project` output:
-
-1. Scaffold WireMock stubs (or Spring Cloud Contract files) for each detected Feign client boundary
-2. Write scaffolded contract files
-
-Tell human: `"Contract test scaffolds written to src/test/resources/wiremock/ (or contracts/)"`
-
-```
-A) Looks good (recommended)
-B) Edit — tell me what to change
-C) Skip contract tests for now
-```
-
-<HARD-GATE>
-Do NOT run mvn verify until the human reviews the scaffolded contract test files.
-</HARD-GATE>
-
-On C: continue to step 4.
-
-**Step 4: Run mvn verify**
-
-```bash
-JKIT_ENV=test direnv exec . mvn verify -DskipUnitTests
-```
+Runs: unit tests → quality gates → integration tests (Failsafe) → JaCoCo dump + merge + report.
 
 Fix failures inline. Repeat until green.
 
-**Step 5: Code review handoff**
+**Step 3: Coverage check**
+
+```bash
+# Unit + integration combined (merged jacoco.xml)
+bin/jkit coverage target/site/jacoco/jacoco.xml --summary --min-score 1.0
+
+# API endpoint coverage: spec vs test source
+bin/jkit coverage --api docs/domains/ src/test/java/
+```
+
+**Failures** (tests or quality): fix inline, re-run.
+
+**Gaps only** (coverage below threshold or untested endpoints): ask:
+> "Coverage gaps found: [list].
+> A) Fix gaps now — run api-scenarios / add unit tests (recommended)
+> B) Proceed to code review — I'll note the gaps"
+
+**Step 4: Code review handoff**
 
 java-verify does NOT own the final commit. The commit is `java-tdd`'s responsibility.
 
-**REQUIRED SUB-SKILL: invoke `superpowers:requesting-code-review`** after all verify tests pass.
+**REQUIRED SUB-SKILL: invoke `superpowers:requesting-code-review`.**
 
----
+### Superpowers Integration
 
-## `contract-testing` Skill
-
-### Frontmatter
-
-```yaml
----
-name: contract-testing
-description: Use when generating or running API scenario integration tests for a specific domain after its endpoints are implemented.
----
-```
-
-### Skill Type: Technique/Pattern with HARD-GATE
-
-**Announcement:** At start: *"I'm using the contract-testing skill to generate API scenario tests for the [domain] domain."*
-
-### Checklist
-
-- [ ] Load java-coding-standards
-- [ ] Detect Spring Boot version
-- [ ] Resolve container runtime (legacy path)
-- [ ] Verify test dependencies
-- [ ] Extract changed endpoints from api-spec diff
-- [ ] Ask about external dependencies
-- [ ] Write contract-tests.md
-- [ ] Get scenario approval
-- [ ] Generate test code
-- [ ] Run tests
-- [ ] Fix failures
-
-### Process Flow
-
-```dot
-digraph contract_testing {
-    "Load java-coding-standards" [shape=box];
-    "Detect Spring Boot version" [shape=box];
-    "SB 3.1+?" [shape=diamond];
-    "Verify Testcontainers deps" [shape=box];
-    "Resolve container runtime\nCheck docker-compose.test.yml" [shape=box];
-    "Extract changed endpoints\n(from .spec-sync diff)" [shape=box];
-    "Ask about external services" [shape=box];
-    "Write contract-tests.md" [shape=box];
-    "HARD-GATE: scenario approval" [shape=box style=filled fillcolor=lightyellow];
-    "Generate test code\n(*IntegrationTest.java)" [shape=box];
-    "Run tests" [shape=box];
-    "Tests pass?" [shape=diamond];
-    "Classify failure" [shape=box];
-    "Fix generated code" [shape=box];
-    "superpowers:systematic-debugging" [shape=box];
-    "Done (caller commits)" [shape=doublecircle];
-
-    "Load java-coding-standards" -> "Detect Spring Boot version";
-    "Detect Spring Boot version" -> "SB 3.1+?";
-    "SB 3.1+?" -> "Verify Testcontainers deps" [label="yes"];
-    "SB 3.1+?" -> "Resolve container runtime\nCheck docker-compose.test.yml" [label="no"];
-    "Verify Testcontainers deps" -> "Extract changed endpoints\n(from .spec-sync diff)";
-    "Resolve container runtime\nCheck docker-compose.test.yml" -> "Extract changed endpoints\n(from .spec-sync diff)";
-    "Extract changed endpoints\n(from .spec-sync diff)" -> "Ask about external services";
-    "Ask about external services" -> "Write contract-tests.md";
-    "Write contract-tests.md" -> "HARD-GATE: scenario approval";
-    "HARD-GATE: scenario approval" -> "Generate test code\n(*IntegrationTest.java)" [label="approved"];
-    "HARD-GATE: scenario approval" -> "Write contract-tests.md" [label="edit requested"];
-    "Generate test code\n(*IntegrationTest.java)" -> "Run tests";
-    "Run tests" -> "Tests pass?";
-    "Tests pass?" -> "Done (caller commits)" [label="yes"];
-    "Tests pass?" -> "Classify failure" [label="no"];
-    "Classify failure" -> "Fix generated code" [label="generated code error"];
-    "Classify failure" -> "superpowers:systematic-debugging" [label="implementation bug"];
-    "Fix generated code" -> "Run tests";
-    "superpowers:systematic-debugging" -> "Run tests";
-}
-```
-
-### Detailed Flow
-
-**Step 0: Load java-coding-standards**
-
-Read `<plugin-root>/docs/java-coding-standards.md`. Apply all rules.
-
-**Step 1: Detect Spring Boot version**
-
-Read `<parent><version>` from `pom.xml`.
-
-| Spring Boot version | Testing strategy |
+| Superpowers skill | How used |
 |---|---|
-| 3.1+ | `@SpringBootTest` + Testcontainers (`@ServiceConnection`) + RestAssured |
-| < 3.1 | `docker-compose.test.yml` → RestAssured against running container |
-
-**Step 2: Prerequisites**
-
-**Spring Boot 3.1+:** Check `pom.xml` for Testcontainers, RestAssured, WireMock test deps. If missing: add from `templates/pom-fragments/testcontainers.xml`.
-
-**Spring Boot < 3.1:** Resolve container runtime in order:
-1. `docker` (`docker compose` plugin syntax or `docker-compose` standalone)
-2. `podman` (`podman compose`)
-3. Neither found → stop: *"No container runtime found. Install Docker or Podman and re-run."*
-
-Check `docker-compose.test.yml` exists. If missing: copy from `templates/docker-compose.test.yml`.
-
-**Step 3: Extract changed endpoints**
-
-```bash
-git diff $(cat docs/.spec-sync) HEAD -- docs/domains/<name>/api-spec.yaml
-```
-
-Extract only **added or modified** endpoints. Unchanged endpoints already have tests — do NOT regenerate.
-
-**Step 4: Ask about external services**
-
-> "Which external services do these endpoints call?
-> A) None (recommended if self-contained)
-> B) [list detected Feign clients from codebase]"
-
-Use answer to determine which services need WireMock stubs.
-
-**Step 5: Write contract-tests.md**
-
-Write `docs/jkit/<run>/contract-tests.md`:
-
-```markdown
-## Contract Tests: billing domain
-
-| Endpoint | Scenario | Input | Expected |
-|----------|----------|-------|----------|
-| POST /invoices/bulk | happy path | valid list of 3 | 201 + list of invoice IDs |
-| POST /invoices/bulk | empty list | [] | 400 validation error |
-| POST /invoices/bulk | unauthenticated | no token | 401 |
-| POST /invoices/bulk | missing required field | list without amount | 422 |
-```
-
-Required scenarios for each endpoint: happy path, input validation failures (400/422), auth failures (401/403), not-found (404) where applicable, business-specific edge cases.
-
-Tell human: `"Written to docs/jkit/<run>/contract-tests.md"`
-
-```
-A) Looks good (recommended)
-B) Edit — tell me what to change
-```
-
-<HARD-GATE>
-Do NOT generate any test code until the human approves the scenario table in contract-tests.md.
-Test code generated from an unapproved scenario table will be deleted and regenerated.
-</HARD-GATE>
-
-**Step 6: Generate test code**
-
-Generate from the **approved** scenario table only.
-
-**≤ ~20 total scenarios:** generate the full test class in one pass.
-
-**> ~20 or multiple controllers:** split by controller — one `*IntegrationTest.java` per controller, sequential. Append a `## Generation Progress` checklist to `contract-tests.md` before starting:
-```markdown
-## Generation Progress
-- [ ] InvoiceController → InvoiceIntegrationTest.java
-- [ ] PaymentController → PaymentIntegrationTest.java
-```
-Mark each `[x]` after generating and testing. Survives context compression.
-
-Test file location: `src/test/java/com/newland/<service>/<domain>/<Domain>IntegrationTest.java`
-
-**Spring Boot 3.1+ test template:**
-```java
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Testcontainers
-class BillingIntegrationTest {
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15");
-
-    @RegisterExtension
-    static WireMockExtension externalSvc = WireMockExtension.newInstance()
-        .options(wireMockConfig().dynamicPort()).build();
-
-    @LocalServerPort int port;
-
-    @BeforeEach void setup() { RestAssured.port = port; }
-
-    @Test void bulkInvoice_happyPath() { /* given/when/then */ }
-}
-```
-
-**Spring Boot < 3.1 test template:**
-```java
-class BillingIntegrationTest {
-    static String baseUri = System.getenv().getOrDefault("SERVICE_BASE_URI", "http://localhost:8080");
-
-    @BeforeAll static void setup() { RestAssured.baseURI = baseUri; }
-
-    @Test void bulkInvoice_happyPath() { /* given/when/then */ }
-}
-```
-
-**Step 7: Run tests**
-
-**Spring Boot 3.1+:**
-```bash
-# One-shot
-JKIT_ENV=test direnv exec . mvn test -Dtest=*IntegrationTest
-# Per-controller (split mode)
-JKIT_ENV=test direnv exec . mvn test -Dtest=<Domain>IntegrationTest
-```
-
-**Spring Boot < 3.1:**
-```bash
-# Start containers (first controller only — reuse for subsequent)
-<runtime> compose -f docker-compose.test.yml up -d
-JKIT_ENV=test direnv exec . mvn test -Dtest=*IntegrationTest
-```
-
-**Step 8: Fix failures**
-
-Classify before acting:
-
-- **Generated code error** (compilation failure, assertion doesn't match approved scenario): fix the generated test inline. Do NOT change the approved scenario table. Re-run.
-- **Implementation bug** (test is correct per spec, production code misbehaves): invoke `superpowers:systematic-debugging` targeting the failing endpoint.
-- **After one self-fix pass:** if tests still fail for any reason → always invoke `superpowers:systematic-debugging`.
-
-**Ownership:** contract-testing does NOT own the commit. The caller (`java-tdd` via its final commit, or the human directly) is responsible.
+| `superpowers:requesting-code-review` | Always — final step after all checks pass |
 
 ---
 
 ## Commit Convention
 
-This iteration is delivered as two commits (one per skill, or combined):
-
 ```
+feat: add api-scenarios skill
 feat: add java-verify skill
-feat: add contract-testing skill
 ```
