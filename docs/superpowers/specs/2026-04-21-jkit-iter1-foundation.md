@@ -25,10 +25,10 @@ Establishes the plugin skeleton: registration, hooks, CLI wrapper, templates, an
 | `.claude-plugin/plugin.json` | Update | Plugin registration |
 | `hooks/hooks.json` | Create | Hook registration with matcher |
 | `hooks/run-hook.cmd` | Create | Polyglot dispatcher (Windows + Unix) |
-| `hooks/session-start` | Create | direnv setup + jkit CLI validation |
+| `hooks/session-start` | Create | direnv setup + jkit CLI validation + conditional context injection |
 | `hooks/post-commit-sync.sh` | Create | Updates `.spec-sync` after impl commits |
+| `hooks/jkit-context.md` | Create | Workflow context injected by session-start (jkit-managed projects only) |
 | `bin/jkit` | Create | Polyglot CLI wrapper |
-| `templates/CLAUDE.md` | Create | Project workflow conventions |
 | `templates/envrc` | Create | direnv template |
 | `templates/example.env` | Create | Env var template |
 | `templates/docker-compose.yml` | Create | Local dev dependencies |
@@ -73,10 +73,12 @@ Establishes the plugin skeleton: registration, hooks, CLI wrapper, templates, an
 
 jkit uses two hooks:
 
-1. **`SessionStart`** — direnv setup + jkit CLI validation. Outputs `{}` with no context payload. Session context injection is fully delegated to superpowers' `SessionStart` hook.
+1. **`SessionStart`** — direnv setup + jkit CLI validation + **conditional context injection**. If `docs/.spec-sync` exists in the working directory (jkit-managed project), injects `hooks/jkit-context.md` as `additionalContext`. Otherwise outputs `{}`. Platform detection follows the superpowers pattern (Cursor / Claude Code / SDK fallback).
 2. **`post-commit`** — updates `.spec-sync` after implementation commits via amend.
 
 The `SessionStart` hook routes through `run-hook.cmd`, a polyglot dispatcher that works on Windows and Unix from a single file.
+
+**Why conditional injection:** The hook fires for every project when jkit is installed. Injecting workflow context into non-jkit projects would pollute sessions with irrelevant conventions. `docs/.spec-sync` is the reliable signal that this is a jkit-managed project.
 
 ### `hooks/hooks.json`
 
@@ -159,8 +161,60 @@ if [ ! -x "${PLUGIN_ROOT}/bin/jkit" ]; then
   echo "jkit: bin/jkit missing or not executable. Run: chmod +x ~/.claude/plugins/jkit/bin/*" >&2
 fi
 
-printf '{}\n'
+# 4. Conditional context injection — only for jkit-managed projects
+if [ ! -f "docs/.spec-sync" ]; then
+  printf '{}\n'
+  exit 0
+fi
+
+CONTEXT=$(cat "${PLUGIN_ROOT}/hooks/jkit-context.md")
+
+# Platform detection (follows superpowers pattern)
+if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
+  # Cursor
+  printf '{"additional_context": %s}\n' "$(printf '%s' "$CONTEXT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${COPILOT_CLI:-}" ]; then
+  # Claude Code
+  printf '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": %s}}\n' \
+    "$(printf '%s' "$CONTEXT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+else
+  # SDK / fallback
+  printf '{"additionalContext": %s}\n' "$(printf '%s' "$CONTEXT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+fi
 exit 0
+```
+
+### `hooks/jkit-context.md`
+
+Injected as `additionalContext` when `docs/.spec-sync` is detected. Kept brief — full skill bodies lazy-load on demand.
+
+```markdown
+This is a jkit-managed Java/Spring Boot microservice project.
+
+## Commit conventions
+
+| Prefix | When to use |
+|--------|-------------|
+| `docs(spec):` or `docs(<domain>):` | Spec change in docs/domains/ |
+| `feat(impl):` | New feature implementation |
+| `fix(impl):` | Bug fix implementation |
+| `chore(impl):` | Non-feature implementation work |
+
+The `(impl):` scope triggers the post-commit hook to update `docs/.spec-sync`.
+
+## Environment
+
+Single `application.yml` using `${ENV_VAR:default}`. No `application-{profile}.yml` files.
+- Local dev: `direnv` auto-loads `.env/local.env` when you enter the project directory
+- Other envs: `JKIT_ENV=test direnv exec . <cmd>`
+
+## Key skills
+
+- **spec-delta** — compute requirements delta since last implementation → drives full spec-to-commit cycle
+- **java-tdd** — TDD implementation with JaCoCo coverage gap analysis
+- **java-verify** — integration + contract test scaffolding
+- **contract-testing** — per-domain API scenario test generation
+- **publish-contract** — generate SKILL.md + openapi.yaml for other services to consume
 ```
 
 ### `hooks/post-commit-sync.sh`
@@ -229,49 +283,6 @@ Skills are invoked via the Claude Code `Skill` tool — no slash commands. Devel
 ---
 
 ## Templates
-
-### `templates/CLAUDE.md`
-
-Project workflow conventions. **No coding rules** — those live in `docs/java-coding-standards.md`.
-
-```markdown
-# Project Conventions
-
-## Commit Prefixes
-
-| Prefix | Meaning |
-|--------|---------|
-| `docs(spec):` or `docs(<domain>):` | Spec change (triggers spec-delta) |
-| `feat(impl):` | New feature implementation |
-| `fix(impl):` | Bug fix implementation |
-| `chore(impl):` | Non-feature implementation work |
-
-The `(impl):` scope triggers the post-commit hook to update `docs/.spec-sync`.
-
-## Environment
-
-Single `application.yml` using `${ENV_VAR:default}`. No `application-{profile}.yml` files.
-
-- Local: `direnv` auto-loads `.env/local.env` on project entry
-- Other envs: `JKIT_ENV=test direnv exec . <cmd>`
-
-## Workflow
-
-1. Edit `docs/domains/` spec files
-2. `git commit -m "docs(<domain>): <what changed>"`
-3. Use `spec-delta` skill → review artifacts → plan approved → java-tdd runs
-4. `java-verify` skill (also invoked by java-tdd automatically)
-5. `publish-contract` skill after API changes
-
-## jkit Run Artifacts
-
-Each spec-delta run creates `docs/jkit/YYYY-MM-DD-<feature>/`:
-- `change-summary.md` — review before planning
-- `migration-preview.md` — review before SQL generation
-- `migration/` — generated SQL (moved to `src/main/resources/db/migration/` in final commit)
-- `plan.md` — implementation plan (review before java-tdd)
-- `contract-tests.md` — review before test code generation
-```
 
 ### `templates/envrc`
 
