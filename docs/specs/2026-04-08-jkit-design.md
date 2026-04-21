@@ -1,7 +1,7 @@
 # jkit — Design Spec
 
 **Date:** 2026-04-08
-**Status:** Draft
+**Status:** Superseded — see `docs/superpowers/specs/2026-04-21-jkit-iter*.md`
 
 ---
 
@@ -276,8 +276,8 @@ for workflow logic only; structure, frontmatter, and compliance gates must be bu
 
 | Skill | Source | Changes on merge |
 |---|---|---|
-| `comment` | `~/.claude/skills/comment/SKILL.md` | `jkit skel` from `bin/` first; add `## Checklist`; add HARD-GATE before writing any file; add anti-rationalization table for `jkit skel` rescan step |
-| `publishing-service-contract` | `~/.claude/skills/generate-microservice-skill/SKILL.md` | `jkit skel` from `bin/`; controller path convention to `src/main/java/com/newland/<service>/api/`; add `## Checklist`; add HARD-GATE before overwriting existing skill; add anti-rationalization table for Javadoc quality gate |
+| `comment` | `~/project/toms-marketplace/claude-plugin-java/skills/comment/SKILL.md` | `jkit skel` from `bin/` first; add `## Checklist`; add HARD-GATE before writing any file; add anti-rationalization table for `jkit skel` rescan step |
+| `publishing-service-contract` | `~/project/toms-marketplace/claude-plugin-java/skills/gen-contract/SKILL.md` | `jkit skel` from `bin/`; controller path convention to `src/main/java/com/newland/<service>/api/`; add `## Checklist`; add HARD-GATE before overwriting existing skill; add anti-rationalization table for Javadoc quality gate |
 
 **What "rewritten to superpowers pattern" means for each skill:**
 - `description` frontmatter written as **triggering conditions only** — not a workflow summary
@@ -756,7 +756,7 @@ run. Unchanged endpoints already have tests and are not regenerated.
 **Purpose:** Generates a `SKILL.md` for this service so other microservices (and
 Claude instances working in other repos) can call it correctly.
 
-**Source:** Rewritten from `~/.claude/skills/generate-microservice-skill/` to the
+**Source:** Rewritten from `~/project/toms-marketplace/claude-plugin-java/skills/gen-contract/` to the
 superpowers skill pattern (see Skill Development section). Workflow logic is sourced
 from the personal skill; structure, frontmatter, and compliance gates are built fresh.
 
@@ -787,7 +787,7 @@ from the personal skill; structure, frontmatter, and compliance gates are built 
 codebases, processing files in dependency order so each file is commented with full
 knowledge of what it depends on.
 
-**Source:** Rewritten from `~/.claude/skills/comment/` to the superpowers skill
+**Source:** Rewritten from `~/project/toms-marketplace/claude-plugin-java/skills/comment/` to the superpowers skill
 pattern (see Skill Development section). Key changes from the personal version:
 - Description frontmatter written as triggering conditions only (not a workflow summary)
 - `## Checklist` section added; HARD-GATE before writing any file
