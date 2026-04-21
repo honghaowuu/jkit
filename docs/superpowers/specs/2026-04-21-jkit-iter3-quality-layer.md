@@ -11,13 +11,13 @@
 
 Implements the two skills that complete the quality assurance story after `java-tdd`:
 
-1. **`api-scenarios`** — TDD at the HTTP boundary: one RestAssured scenario at a time, RED → GREEN → next scenario. Invoked by `java-tdd` after unit coverage is complete; also usable standalone per domain.
+1. **`scenario-tdd`** — integration TDD at the HTTP boundary: reads scenario gaps from change-summary.md, implements each via RestAssured TDD — one at a time, RED → GREEN → next. Invoked by `java-tdd` after unit coverage is complete; also usable standalone.
 2. **`java-verify`** — pure quality gate: `mvn verify` (quality plugins + all tests) + merged JaCoCo coverage + API endpoint coverage check + code review handoff.
 
 **Pipeline:**
 ```
 java-tdd (unit TDD + JaCoCo)
-  → REQUIRED SUB-SKILL: api-scenarios (integration TDD per domain)
+  → REQUIRED SUB-SKILL: scenario-tdd (integration TDD from gap list)
     → REQUIRED SUB-SKILL: java-verify (quality gate + code review)
 ```
 
@@ -29,25 +29,25 @@ Each skill enforces a single concern. No skill runs twice. No test generation in
 
 | File | Purpose |
 |------|---------|
-| `skills/api-scenarios/SKILL.md` | TDD for API endpoints: one scenario at a time, RED → GREEN |
+| `skills/scenario-tdd/SKILL.md` | Integration TDD from gap list: one scenario at a time, RED → GREEN |
 | `skills/java-verify/SKILL.md` | Quality gate: mvn verify + coverage checks + code review handoff |
 
 ---
 
-## `api-scenarios` Skill
+## `scenario-tdd` Skill
 
 ### Frontmatter
 
 ```yaml
 ---
-name: api-scenarios
-description: Use when generating API scenario integration tests for a specific domain after its endpoints are implemented.
+name: scenario-tdd
+description: Use when implementing integration test scenarios identified as gaps by scenario-gap. Reads the gap list from change-summary.md and implements each via TDD.
 ---
 ```
 
 ### Skill Type: Discipline-Enforcing
 
-**Announcement:** At start: *"I'm using the api-scenarios skill to implement integration tests for the [domain] domain via TDD."*
+**Announcement:** At start: *"I'm using the scenario-tdd skill to implement scenario gaps for the [domain] domain via integration TDD."*
 
 ### Iron Law
 
@@ -75,45 +75,42 @@ No exceptions:
 
 - [ ] Load java-coding-standards
 - [ ] Detect Spring Boot version + prerequisites
-- [ ] Extract changed endpoints
-- [ ] TDD loop: per endpoint, per scenario
+- [ ] Read scenario gaps from change-summary.md
+- [ ] TDD loop: per gap scenario
 - [ ] Invoke java-verify
 
 ### Process Flow
 
 ```dot
-digraph api_scenarios {
+digraph scenario_tdd {
     "Load java-coding-standards" [shape=box];
     "Detect SB version\n+ prerequisites" [shape=box];
-    "Extract changed endpoints\n(spec diff or ad-hoc)" [shape=box];
-    "Endpoints to test?" [shape=diamond];
+    "Read scenario gaps\nfrom change-summary.md" [shape=box];
+    "Gaps to implement?" [shape=diamond];
     "Done → invoke java-verify" [shape=doublecircle];
-    "Next scenario for endpoint" [shape=box];
+    "Next gap scenario" [shape=box];
     "Show scenario to human\n(lightweight gate)" [shape=box];
     "Write failing RestAssured test" [shape=box];
     "Run test → RED?" [shape=diamond];
     "Test is wrong — rewrite it" [shape=box];
     "Fix until GREEN" [shape=box];
-    "More scenarios\nfor this endpoint?" [shape=diamond];
-    "More endpoints?" [shape=diamond];
+    "More gaps?" [shape=diamond];
 
     "Load java-coding-standards" -> "Detect SB version\n+ prerequisites";
-    "Detect SB version\n+ prerequisites" -> "Extract changed endpoints\n(spec diff or ad-hoc)";
-    "Extract changed endpoints\n(spec diff or ad-hoc)" -> "Endpoints to test?";
-    "Endpoints to test?" -> "Done → invoke java-verify" [label="none"];
-    "Endpoints to test?" -> "Next scenario for endpoint" [label="yes"];
-    "Next scenario for endpoint" -> "Show scenario to human\n(lightweight gate)";
+    "Detect SB version\n+ prerequisites" -> "Read scenario gaps\nfrom change-summary.md";
+    "Read scenario gaps\nfrom change-summary.md" -> "Gaps to implement?";
+    "Gaps to implement?" -> "Done → invoke java-verify" [label="none"];
+    "Gaps to implement?" -> "Next gap scenario" [label="yes"];
+    "Next gap scenario" -> "Show scenario to human\n(lightweight gate)";
     "Show scenario to human\n(lightweight gate)" -> "Write failing RestAssured test" [label="approved"];
-    "Show scenario to human\n(lightweight gate)" -> "Next scenario for endpoint" [label="skip"];
+    "Show scenario to human\n(lightweight gate)" -> "Next gap scenario" [label="skip"];
     "Write failing RestAssured test" -> "Run test → RED?";
     "Run test → RED?" -> "Fix until GREEN" [label="yes"];
     "Run test → RED?" -> "Test is wrong — rewrite it" [label="no (green immediately)"];
     "Test is wrong — rewrite it" -> "Run test → RED?";
-    "Fix until GREEN" -> "More scenarios\nfor this endpoint?";
-    "More scenarios\nfor this endpoint?" -> "Next scenario for endpoint" [label="yes"];
-    "More scenarios\nfor this endpoint?" -> "More endpoints?" [label="no"];
-    "More endpoints?" -> "Next scenario for endpoint" [label="yes"];
-    "More endpoints?" -> "Done → invoke java-verify" [label="no"];
+    "Fix until GREEN" -> "More gaps?";
+    "More gaps?" -> "Next gap scenario" [label="yes"];
+    "More gaps?" -> "Done → invoke java-verify" [label="no"];
 }
 ```
 
@@ -141,34 +138,21 @@ Read `<parent><version>` from `pom.xml`.
 
 Check `docker-compose.test.yml` exists. If missing: copy from `templates/docker-compose.test.yml`.
 
-**Step 2: Extract changed endpoints**
+**Step 2: Read scenario gaps**
 
-**Spec-delta driven (called by java-tdd):** Read changed domains from the current run's `change-summary.md`. For each changed domain:
-```bash
-git diff $(cat docs/.spec-sync) HEAD -- docs/domains/<domain>/api-spec.yaml
-```
-Extract only added or modified endpoints. Unchanged endpoints already have tests — do NOT regenerate.
+Read the **Test Scenario Gaps** section from `.jkit/<run>/change-summary.md` (passed by java-tdd). Each row is a `{domain, endpoint, scenario_id, scenario_description}` tuple — the authoritative work list for this run.
 
-**Ad-hoc (human-initiated):** Ask which domain and which endpoints to cover.
-
-If no changed API endpoints → complete immediately, invoke `java-verify`.
+If the section is absent or empty → no scenario gaps detected; complete immediately, invoke `java-verify`.
 
 **Step 3: TDD loop**
 
-For each endpoint, determine scenarios in order:
-1. Happy path
-2. Input validation failures (400/422) — one per distinct validation rule
-3. Auth failures (401/403) where applicable
-4. Not found (404) where applicable
-5. Business-specific edge cases from `api-spec.yaml`
-
-For each scenario:
+Process gaps in the order they appear in change-summary.md (domain order preserved from spec-delta). For each gap scenario:
 
 **Lightweight gate** — announce before writing:
-> "Next: `POST /invoices/bulk` — happy path (valid list of 3 → 201 + invoice IDs). Write this test?
+> "Next: `POST /invoices/bulk` — `happy-path`: valid list of 3 → 201 + invoice IDs. Write this test?
 > A) Yes (recommended)
 > B) Edit this scenario
-> C) Skip endpoint"
+> C) Skip"
 
 **Write the failing test** targeting exactly this scenario. One test method, one assertion.
 
@@ -225,9 +209,9 @@ class BillingIntegrationTest {
 
 **Step 4: Invoke java-verify**
 
-**REQUIRED SUB-SKILL: invoke `java-verify`** after all changed endpoints are covered.
+**REQUIRED SUB-SKILL: invoke `java-verify`** after all gap scenarios are covered.
 
-api-scenarios does NOT own the commit. The commit is `java-tdd`'s responsibility.
+scenario-tdd does NOT own the commit. The commit is `java-tdd`'s responsibility.
 
 ### Superpowers Integration
 
@@ -244,7 +228,7 @@ api-scenarios does NOT own the commit. The commit is `java-tdd`'s responsibility
 ```yaml
 ---
 name: java-verify
-description: Use when verifying all quality gates and coverage after api-scenarios completes, or when explicitly asked to run the full verification suite.
+description: Use when verifying all quality gates and coverage after scenario-tdd completes, or when explicitly asked to run the full verification suite.
 ---
 ```
 
@@ -328,7 +312,7 @@ bin/jkit coverage --api docs/domains/ src/test/java/
 
 **Gaps only** (coverage below threshold or untested endpoints): ask:
 > "Coverage gaps found: [list].
-> A) Fix gaps now — run api-scenarios / add unit tests (recommended)
+> A) Fix gaps now — run scenario-tdd / add unit tests (recommended)
 > B) Proceed to code review — I'll note the gaps"
 
 **Step 4: Code review handoff**
@@ -348,6 +332,6 @@ java-verify does NOT own the final commit. The commit is `java-tdd`'s responsibi
 ## Commit Convention
 
 ```
-feat: add api-scenarios skill
+feat: add scenario-tdd skill
 feat: add java-verify skill
 ```

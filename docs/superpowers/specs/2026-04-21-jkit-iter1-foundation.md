@@ -53,13 +53,14 @@ Establishes the plugin skeleton: registration, hooks, CLI wrapper, templates, an
   "version": "0.2.0",
   "author": { "name": "honghaowu" },
   "license": "UNLICENSED",
-  "keywords": ["java", "spring-boot", "microservice", "tdd", "api-scenarios"],
+  "keywords": ["java", "spring-boot", "microservice", "tdd", "scenario-tdd"],
   "skills": [
     { "name": "spec-delta",        "path": "skills/spec-delta" },
     { "name": "sql-migration",     "path": "skills/sql-migration" },
     { "name": "java-tdd",          "path": "skills/java-tdd" },
+    { "name": "scenario-gap",      "path": "skills/scenario-gap" },
+    { "name": "scenario-tdd",      "path": "skills/scenario-tdd" },
     { "name": "java-verify",       "path": "skills/java-verify" },
-    { "name": "api-scenarios",  "path": "skills/api-scenarios" },
     { "name": "publish-contract",  "path": "skills/publish-contract" }
   ],
   "hooks": "hooks/hooks.json"
@@ -74,12 +75,12 @@ Establishes the plugin skeleton: registration, hooks, CLI wrapper, templates, an
 
 jkit uses two hooks:
 
-1. **`SessionStart`** — direnv setup + jkit CLI validation + **conditional context injection**. If `docs/.spec-sync` exists in the working directory (jkit-managed project), injects `hooks/jkit-context.md` as `additionalContext`. Otherwise outputs `{}`. Platform detection follows the superpowers pattern (Cursor / Claude Code / SDK fallback).
-2. **`post-commit`** — updates `.spec-sync` after implementation commits via amend.
+1. **`SessionStart`** — direnv setup + jkit CLI validation + **conditional context injection**. If `.jkit/spec-sync` exists in the working directory (jkit-managed project), injects `hooks/jkit-context.md` as `additionalContext`. Otherwise outputs `{}`. Platform detection follows the superpowers pattern (Cursor / Claude Code / SDK fallback).
+2. **`post-commit`** — updates `.jkit/spec-sync` after implementation commits via amend.
 
 The `SessionStart` hook routes through `run-hook.cmd`, a polyglot dispatcher that works on Windows and Unix from a single file.
 
-**Why conditional injection:** The hook fires for every project when jkit is installed. Injecting workflow context into non-jkit projects would pollute sessions with irrelevant conventions. `docs/.spec-sync` is the reliable signal that this is a jkit-managed project.
+**Why conditional injection:** The hook fires for every project when jkit is installed. Injecting workflow context into non-jkit projects would pollute sessions with irrelevant conventions. `.jkit/spec-sync` is the reliable signal that this is a jkit-managed project.
 
 ### `hooks/hooks.json`
 
@@ -163,7 +164,7 @@ if [ ! -x "${PLUGIN_ROOT}/bin/jkit" ]; then
 fi
 
 # 4. Conditional context injection — only for jkit-managed projects
-if [ ! -f "docs/.spec-sync" ]; then
+if [ ! -f ".jkit/spec-sync" ]; then
   printf '{}\n'
   exit 0
 fi
@@ -187,7 +188,7 @@ exit 0
 
 ### `hooks/jkit-context.md`
 
-Injected as `additionalContext` when `docs/.spec-sync` is detected. Kept brief — full skill bodies lazy-load on demand.
+Injected as `additionalContext` when `.jkit/spec-sync` is detected. Kept brief — full skill bodies lazy-load on demand.
 
 ```markdown
 This is a jkit-managed Java/Spring Boot microservice project.
@@ -201,7 +202,7 @@ This is a jkit-managed Java/Spring Boot microservice project.
 | `fix(impl):` | Bug fix implementation |
 | `chore(impl):` | Non-feature implementation work |
 
-The `(impl):` scope triggers the post-commit hook to update `docs/.spec-sync`.
+The `(impl):` scope triggers the post-commit hook to update `.jkit/spec-sync`.
 
 ## Environment
 
@@ -213,7 +214,8 @@ Single `application.yml` using `${ENV_VAR:default}`. No `application-{profile}.y
 
 - **spec-delta** — compute requirements delta since last implementation → drives full spec-to-commit cycle
 - **java-tdd** — TDD implementation with JaCoCo unit coverage gap analysis
-- **api-scenarios** — integration TDD per domain: one RestAssured scenario at a time, RED → GREEN
+- **scenario-gap** — detect unimplemented scenarios per domain from test-scenarios.md; invoked by spec-delta
+- **scenario-tdd** — implement missing scenarios via integration TDD: one at a time, RED → GREEN
 - **java-verify** — quality gate: mvn verify + merged coverage check + code review handoff
 - **publish-contract** — generate 4-level progressive disclosure contract for other services to consume
 ```
@@ -229,22 +231,22 @@ set -euo pipefail
 MSG=$(git log -1 --pretty=%s)
 
 if echo "$MSG" | grep -qE '^(feat|fix|chore)\(impl\):'; then
-  mkdir -p docs
-  git rev-parse HEAD > docs/.spec-sync || {
-    echo "ERROR: Failed to write docs/.spec-sync" >&2; exit 1
+  mkdir -p .jkit
+  git rev-parse HEAD > .jkit/spec-sync || {
+    echo "ERROR: Failed to write .jkit/spec-sync" >&2; exit 1
   }
-  git add docs/.spec-sync
+  git add .jkit/spec-sync
   if ! git diff --cached --quiet; then
     git commit --amend --no-edit || {
       echo "ERROR: Failed to amend commit." >&2
-      echo "Recover: run 'git commit --amend --no-edit' or 'git reset HEAD docs/.spec-sync'" >&2
+      echo "Recover: run 'git commit --amend --no-edit' or 'git reset HEAD .jkit/spec-sync'" >&2
       exit 1
     }
   fi
 fi
 ```
 
-**Re-entrancy:** The second post-commit run (triggered by amend) finds `.spec-sync` already at HEAD → `git diff --cached --quiet` returns true → no second amend. Safe.
+**Re-entrancy:** The second post-commit run (triggered by amend) finds `.jkit/spec-sync` already at HEAD → `git diff --cached --quiet` returns true → no second amend. Safe.
 
 ---
 
@@ -275,11 +277,12 @@ Bundled binaries: `jkit-linux-x86_64`, `jkit-macos-aarch64`, `jkit-windows-x86_6
 
 Skills are invoked via the Claude Code `Skill` tool — no slash commands. Developers trigger skills by name:
 - `spec-delta` — start the implementation loop after spec changes
-- `api-scenarios` — integration TDD for a specific domain (invoked by java-tdd; also usable standalone)
-- `java-verify` — quality gate + code review handoff (invoked by api-scenarios; also usable standalone)
+- `scenario-gap` — detect unimplemented scenarios from test-scenarios.md (invoked by spec-delta)
+- `scenario-tdd` — integration TDD per domain from gap list (invoked by java-tdd; also usable standalone)
+- `java-verify` — quality gate + code review handoff (invoked by scenario-tdd; also usable standalone)
 - `publish-contract` — publish the service contract after API changes
 
-**Pipeline:** `spec-delta → [sql-migration] → java-tdd → api-scenarios → java-verify → code review`
+**Pipeline:** `spec-delta → [sql-migration] → java-tdd → scenario-tdd → java-verify → code review`
 
 ---
 
@@ -363,7 +366,7 @@ Testcontainers BOM `1.19.3` (in `<dependencyManagement>`), plus test-scoped depe
 
 ### `docs/java-coding-standards.md`
 
-Loaded at step 0 by `java-tdd`, `java-verify`, and `api-scenarios`. Content: naming conventions (classes PascalCase, methods camelCase, test methods `methodName_scenario`), Spring Boot structure (controllers in `api/` — no business logic, services in service/ — no HTTP concerns), testing rules (unit tests mock all deps, integration tests use real infra, one behavior per test), error handling (RFC 7807 problem details), JPA rules (UUID PKs, Flyway migrations `V<YYYYMMDD>_NNN__<desc>.sql`), logging (SLF4J, no PII/secrets).
+Loaded at step 0 by `java-tdd`, `scenario-tdd`, and `java-verify`. Content: naming conventions (classes PascalCase, methods camelCase, test methods `methodName_scenario`), Spring Boot structure (controllers in `api/` — no business logic, services in service/ — no HTTP concerns), testing rules (unit tests mock all deps, integration tests use real infra, one behavior per test), error handling (RFC 7807 problem details), JPA rules (UUID PKs, Flyway migrations `V<YYYYMMDD>_NNN__<desc>.sql`), logging (SLF4J, no PII/secrets).
 
 ### `reference/jkit.md`
 

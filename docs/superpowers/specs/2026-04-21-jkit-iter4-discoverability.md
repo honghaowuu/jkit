@@ -415,7 +415,7 @@ git add docs/contracts/{service-name}/
 git commit -m "chore(impl): publish service contract for {service-name}"
 ```
 
-The `(impl):` scope triggers the post-commit hook to update `docs/.spec-sync`.
+The `(impl):` scope triggers the post-commit hook to update `.jkit/spec-sync`.
 
 ---
 

@@ -27,6 +27,7 @@ edit docs/domains/ → commit → spec-delta → [sql-migration] → plan approv
 | File | Purpose |
 |------|---------|
 | `skills/spec-delta/SKILL.md` | Spec diff → clarify → change-summary → plan |
+| `skills/scenario-gap/SKILL.md` | Detect unimplemented scenarios from test-scenarios.md per domain |
 | `skills/sql-migration/SKILL.md` | DB schema migration: introspect → preview → generate → approve → move |
 | `skills/java-tdd/SKILL.md` | TDD per task + JaCoCo coverage gap loop |
 
@@ -63,7 +64,8 @@ spec-delta is the orchestration entry point, not a task implementation skill.
 - [ ] Compute spec diff
 - [ ] Read overview.md
 - [ ] Order domains by dependency
-- [ ] Semantic schema analysis
+- [ ] Schema analysis
+- [ ] Scenario gap detection (invoke scenario-gap per changed domain with test-scenarios.md)
 - [ ] Ask clarification questions
 - [ ] Create run directory
 - [ ] Write change-summary.md
@@ -84,7 +86,8 @@ digraph spec_delta {
     "Stop: no changes" [shape=doublecircle];
     "Read overview.md" [shape=box];
     "Order domains by dependency" [shape=box];
-    "Semantic schema analysis" [shape=box];
+    "Schema analysis" [shape=box];
+    "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.md)" [shape=doublecircle];
     "Ask clarification questions" [shape=box];
     "Create run directory" [shape=box];
     "Write change-summary.md" [shape=box];
@@ -101,8 +104,9 @@ digraph spec_delta {
     "Diff empty?" -> "Stop: no changes" [label="yes"];
     "Diff empty?" -> "Read overview.md" [label="no"];
     "Read overview.md" -> "Order domains by dependency";
-    "Order domains by dependency" -> "Semantic schema analysis";
-    "Semantic schema analysis" -> "Ask clarification questions";
+    "Order domains by dependency" -> "Schema analysis";
+    "Schema analysis" -> "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.md)";
+    "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.md)" -> "Ask clarification questions";
     "Ask clarification questions" -> "Create run directory";
     "Create run directory" -> "Write change-summary.md";
     "Write change-summary.md" -> "HARD-GATE: change-summary approval";
@@ -136,9 +140,9 @@ git rev-list HEAD..@{u} --count
 
 **Step 2: Resolve .spec-sync baseline**
 
-If `docs/.spec-sync` is missing:
+If `.jkit/spec-sync` is missing:
 - Run `git log --oneline -- docs/domains/*/`
-- No such commits → silently init to HEAD, stop: *"No spec commits found. Initialized docs/.spec-sync to HEAD."*
+- No such commits → silently init to HEAD, stop: *"No spec commits found. Initialized .jkit/spec-sync to HEAD."*
 - Commits found → show last 5, ask which was last fully implemented (A–E + Z=HEAD + M=manual SHA) → write chosen SHA → stop: *"Baseline set to [sha]. Run /spec-delta again to see what's pending."*
 
 If present → read baseline SHA.
@@ -152,7 +156,7 @@ If run directory already exists (interrupted previous run) → ask:
 **Step 3: Compute diff**
 
 ```bash
-git diff $(cat docs/.spec-sync) HEAD -- docs/domains/*/
+git diff $(cat .jkit/spec-sync) HEAD -- docs/domains/*/
 ```
 
 Empty diff → stop: *"No spec changes since last implementation."*
@@ -172,9 +176,17 @@ Cross-domain: if domain-A's model is referenced by domain-B's API, domain-A come
 > A) Yes (recommended)
 > B) No — independent"
 
-**Step 6: Semantic schema analysis**
+**Step 6: Semantic analysis**
+
+**Step 6a: Schema analysis**
 
 Read the full diff of all changed spec docs. Reason about whether changes imply database schema changes (new tables, new/renamed/dropped columns, FK changes, new indexes). Use domain understanding — **no keyword scanning**.
+
+**Step 6b: Scenario gap detection**
+
+For each changed domain that has `docs/domains/<domain>/test-scenarios.md`:
+
+**REQUIRED SUB-SKILL: invoke `scenario-gap`**, passing the domain name. scenario-gap reads the scenario list from `test-scenarios.md`, compares against existing test methods, and returns the list of unimplemented scenarios. Collect all gaps across domains — written into change-summary.md in Step 9.
 
 **Step 7: Ask clarification questions**
 
@@ -186,13 +198,13 @@ One at a time. Only for genuine ambiguities. Each question:
 **Step 8: Create run directory**
 
 ```
-docs/jkit/YYYY-MM-DD-<feature>/
+.jkit/YYYY-MM-DD-<feature>/
 ```
 `<feature>` = short slug from the most significant change (e.g., `billing-bulk-invoice`).
 
 **Step 9: Write change-summary.md**
 
-Write `docs/jkit/<run>/change-summary.md`:
+Write `.jkit/<run>/change-summary.md`:
 ```markdown
 # Change Summary: <feature>
 
@@ -216,9 +228,18 @@ None / [description]
 1. billing/domain-model (BulkInvoice entity)
 2. billing/api-implement-logic (BulkInvoiceService)
 3. billing/api-spec (POST /invoices/bulk)
+
+## Test Scenario Gaps
+
+| Domain | Endpoint | Scenario |
+|--------|----------|---------|
+| billing | POST /invoices/bulk | happy-path: valid list of 3 → 201 |
+| billing | POST /invoices/bulk | validation-empty-list: empty list → 400 |
+
+(Omit section if no changed domain has test-scenarios.md)
 ```
 
-Tell human: `"Written to docs/jkit/<run>/change-summary.md"`
+Tell human: `"Written to .jkit/<run>/change-summary.md"`
 
 ```
 A) Looks good (recommended)
@@ -232,7 +253,7 @@ Do NOT invoke writing-plans or proceed to SQL migration until the human approves
 **Step 10: SQL migration handoff (if schema changes flagged)**
 
 **REQUIRED SUB-SKILL: invoke `sql-migration`**, passing:
-- The run directory path: `docs/jkit/<run>/`
+- The run directory path: `.jkit/<run>/`
 - The inferred schema changes from Step 6 (tables/columns added, modified, or dropped)
 
 sql-migration handles introspection, migration-preview.md, SQL generation, approval, and file placement. Return here after sql-migration completes.
@@ -245,13 +266,13 @@ Invoke `superpowers:writing-plans` with:
 - All clarification answers from Step 7
 
 Two overrides to pass to writing-plans:
-1. **Plan location:** save to `docs/jkit/<run>/plan.md` (not the superpowers default)
+1. **Plan location:** save to `.jkit/<run>/plan.md` (not the superpowers default)
 2. **Plan header note:** replace the agentic-worker note with:
    > `For agentic workers: REQUIRED SUB-SKILL: Use java-tdd to implement this plan (TDD workflow with JaCoCo coverage analysis and integration test scaffolding).`
 
 **Step 12: Plan approval and handoff**
 
-Tell human: `"Plan written to docs/jkit/<run>/plan.md"`
+Tell human: `"Plan written to .jkit/<run>/plan.md"`
 ```
 A) Looks good (recommended)
 B) Edit — tell me what to change
@@ -305,7 +326,7 @@ digraph sql_migration {
     "Warn: spec-only inference" [shape=box];
     "Write migration-preview.md" [shape=box];
     "HARD-GATE: preview approval" [shape=box style=filled fillcolor=lightyellow];
-    "Generate migration SQL\n(docs/jkit/<run>/migration/)" [shape=box];
+    "Generate migration SQL\n(.jkit/<run>/migration/)" [shape=box];
     "HARD-GATE: SQL approval" [shape=box style=filled fillcolor=lightyellow];
     "Move to src/main/resources/db/migration/" [shape=box];
     "Done (return to caller)" [shape=doublecircle];
@@ -316,12 +337,12 @@ digraph sql_migration {
     "DB unreachable?" -> "Write migration-preview.md" [label="no"];
     "Warn: spec-only inference" -> "Write migration-preview.md";
     "Write migration-preview.md" -> "HARD-GATE: preview approval";
-    "HARD-GATE: preview approval" -> "Generate migration SQL\n(docs/jkit/<run>/migration/)" [label="approved"];
+    "HARD-GATE: preview approval" -> "Generate migration SQL\n(.jkit/<run>/migration/)" [label="approved"];
     "HARD-GATE: preview approval" -> "Write migration-preview.md" [label="edit requested"];
     "HARD-GATE: preview approval" -> "Done (return to caller)" [label="skip"];
-    "Generate migration SQL\n(docs/jkit/<run>/migration/)" -> "HARD-GATE: SQL approval";
+    "Generate migration SQL\n(.jkit/<run>/migration/)" -> "HARD-GATE: SQL approval";
     "HARD-GATE: SQL approval" -> "Move to src/main/resources/db/migration/" [label="approved"];
-    "HARD-GATE: SQL approval" -> "Generate migration SQL\n(docs/jkit/<run>/migration/)" [label="edit requested"];
+    "HARD-GATE: SQL approval" -> "Generate migration SQL\n(.jkit/<run>/migration/)" [label="edit requested"];
     "Move to src/main/resources/db/migration/" -> "Done (return to caller)";
 }
 ```
@@ -344,7 +365,7 @@ Fallback order:
 
 **Step 2: Write migration-preview.md**
 
-Write `docs/jkit/<run>/migration-preview.md`. Omit columns already present in the live DB:
+Write `.jkit/<run>/migration-preview.md`. Omit columns already present in the live DB:
 
 ```markdown
 ## Migration Preview: <feature>
@@ -355,7 +376,7 @@ Write `docs/jkit/<run>/migration-preview.md`. Omit columns already present in th
 | `invoice.bulk_id` | ADD COLUMN | FK to bulk_invoice(id), nullable |
 ```
 
-Tell human: `"Written to docs/jkit/<run>/migration-preview.md"`
+Tell human: `"Written to .jkit/<run>/migration-preview.md"`
 
 ```
 A) Approve as-is (recommended)
@@ -371,9 +392,9 @@ On C: return to caller immediately (no SQL generated).
 
 **Step 3: Generate migration SQL**
 
-Generate `docs/jkit/<run>/migration/V<YYYYMMDD>_NNN__<feature>.sql` from the approved preview. `NNN` = next sequential index in `src/main/resources/db/migration/` (padded to 3 digits).
+Generate `.jkit/<run>/migration/V<YYYYMMDD>_NNN__<feature>.sql` from the approved preview. `NNN` = next sequential index in `src/main/resources/db/migration/` (padded to 3 digits).
 
-Tell human: `"Migration SQL written to docs/jkit/<run>/migration/<file>.sql"`
+Tell human: `"Migration SQL written to .jkit/<run>/migration/<file>.sql"`
 
 ```
 A) Looks good — move to src/main/resources/db/migration/ (recommended)
@@ -450,11 +471,12 @@ No exceptions:
 - [ ] Choose execution mode
 - [ ] Verify JaCoCo plugin
 - [ ] Implement via superpowers:test-driven-development per task
+- [ ] Compile check after each task (max 3 retries)
 - [ ] Run mvn test + jacoco:report
 - [ ] Run jkit coverage
 - [ ] Fill unit coverage gaps via TDD
 - [ ] Repeat until no gaps above threshold
-- [ ] Invoke api-scenarios
+- [ ] Invoke scenario-tdd
 - [ ] Final commit
 
 ### Process Flow
@@ -466,26 +488,28 @@ digraph java_tdd {
     "Ask execution mode" [shape=box];
     "Verify JaCoCo" [shape=box];
     "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)" [shape=box];
+    "mvn compile test-compile -q\n(max 3 retries)" [shape=box];
     "mvn clean test\njacoco:report" [shape=box];
     "jkit coverage\n--summary --min-score 1.0" [shape=box];
     "Gaps above threshold?" [shape=diamond];
     "TDD per gap" [shape=box];
     "More tasks?" [shape=diamond];
-    "Invoke api-scenarios" [shape=doublecircle];
+    "Invoke scenario-tdd" [shape=doublecircle];
 
     "Load java-coding-standards" -> "Detect plan?";
     "Detect plan?" -> "Ask execution mode" [label="plan found"];
     "Detect plan?" -> "Verify JaCoCo" [label="ad-hoc"];
     "Ask execution mode" -> "Verify JaCoCo";
     "Verify JaCoCo" -> "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)";
-    "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)" -> "mvn clean test\njacoco:report";
+    "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)" -> "mvn compile test-compile -q\n(max 3 retries)";
+    "mvn compile test-compile -q\n(max 3 retries)" -> "More tasks?";
     "mvn clean test\njacoco:report" -> "jkit coverage\n--summary --min-score 1.0";
     "jkit coverage\n--summary --min-score 1.0" -> "Gaps above threshold?";
     "Gaps above threshold?" -> "TDD per gap" [label="yes"];
     "TDD per gap" -> "mvn clean test\njacoco:report";
     "Gaps above threshold?" -> "More tasks?" [label="no"];
     "More tasks?" -> "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)" [label="yes"];
-    "More tasks?" -> "Invoke api-scenarios" [label="no"];
+    "More tasks?" -> "mvn clean test\njacoco:report" [label="no"];
 }
 ```
 
@@ -497,8 +521,8 @@ Read `<plugin-root>/docs/java-coding-standards.md`. Apply all rules throughout.
 
 **Step 1: Plan detection**
 
-Check for the most recent spec-delta run directory under `docs/jkit/`. If `plan.md` exists and `.spec-sync` has not yet been updated to HEAD, offer:
-> "Found plan `docs/jkit/<run>/plan.md`. Implement from this plan?
+Check for the most recent spec-delta run directory under `.jkit/`. If `plan.md` exists and `.jkit/spec-sync` has not yet been updated to HEAD, offer:
+> "Found plan `.jkit/<run>/plan.md`. Implement from this plan?
 > A) Yes — implement per plan (recommended)
 > B) No — ad-hoc TDD (I'll describe what to build)"
 
@@ -523,7 +547,17 @@ Check `pom.xml` for JaCoCo Maven plugin. If missing: add from `templates/pom-fra
 
 **Step 4: Implement via superpowers:test-driven-development**
 
-For each plan task (or ad-hoc description): invoke `superpowers:test-driven-development`. Complete the full RED/GREEN/REFACTOR cycle before proceeding to step 5.
+For each plan task (or ad-hoc description): invoke `superpowers:test-driven-development`. Complete the full RED/GREEN/REFACTOR cycle, then run the compile check before moving to the next task.
+
+**Step 4.5: Compile check (per task)**
+
+```bash
+mvn compile test-compile -q
+```
+
+On failure: analyze the error, fix the generated code, retry. Max 3 attempts. If still failing after 3: stop and report the root cause — do not proceed to the next task.
+
+If all tasks pass compile check → proceed to step 5.
 
 **Step 5: JaCoCo unit coverage loop**
 
@@ -545,7 +579,7 @@ Determine progress from durable state: `git log --oneline` for `feat(impl):`/`fi
 
 **Step 8: Invoke java-verify**
 
-**REQUIRED SUB-SKILL: invoke `api-scenarios`** after all plan tasks pass unit coverage gates. Pass the current run directory and the list of changed domains from `change-summary.md`. api-scenarios will call `java-verify` when done.
+**REQUIRED SUB-SKILL: invoke `scenario-tdd`** after all plan tasks pass unit coverage gates. Pass the current run directory and the scenario gap list from `change-summary.md`. scenario-tdd will call `java-verify` when done.
 
 **Step 9: Final commit**
 
@@ -554,7 +588,7 @@ Commit message MUST use one of:
 - `fix(impl): <description>` — bug fix
 - `chore(impl): <description>` — non-feature work
 
-The post-commit hook will update `docs/.spec-sync` automatically.
+The post-commit hook will update `.jkit/spec-sync` automatically.
 
 ### Superpowers Integration
 
@@ -563,7 +597,7 @@ The post-commit hook will update `docs/.spec-sync` automatically.
 | `superpowers:test-driven-development` | Full RED/GREEN/REFACTOR per task and per coverage gap |
 | `superpowers:subagent-driven-development` | Subagent-driven execution mode |
 | `superpowers:executing-plans` | Inline execution mode |
-| `superpowers:requesting-code-review` | After all tasks pass — invoked by java-verify via api-scenarios (see Iteration 3) |
+| `superpowers:requesting-code-review` | After all tasks pass — invoked by java-verify via scenario-tdd (see Iteration 3) |
 
 ---
 
@@ -572,6 +606,14 @@ The post-commit hook will update `docs/.spec-sync` automatically.
 spec-delta watches `docs/domains/*/` — every microservice using jkit must follow this layout:
 
 ```
+.jkit/
+  spec-sync                         ← SHA of last fully implemented spec commit
+  YYYY-MM-DD-<feature>/             ← one directory per spec-delta run
+    change-summary.md
+    plan.md
+    contract-tests.md
+    migration-preview.md
+    migration/
 docs/
   overview.md                       ← ≤1 page, what this service does
   domains/
@@ -579,17 +621,81 @@ docs/
       api-spec.yaml                 ← OpenAPI v3
       api-implement-logic.md
       domain-model.md
+      test-scenarios.md             ← generated by docflow; scenario gap source
     payment/
       ...
-  jkit/
-    YYYY-MM-DD-<feature>/           ← one directory per spec-delta run
-      change-summary.md
-      plan.md
-      contract-tests.md
-      migration-preview.md
-      migration/
-  .spec-sync                        ← SHA of last fully implemented spec commit
 ```
+
+---
+
+## `scenario-gap` Skill
+
+### Frontmatter
+
+```yaml
+---
+name: scenario-gap
+description: Use when detecting unimplemented test scenarios for a domain that has a test-scenarios.md file. Invoked by spec-delta during change analysis.
+---
+```
+
+### Skill Type: Utility (returns structured output to caller)
+
+**Announcement:** At start: *"I'm using the scenario-gap skill to detect unimplemented scenarios for the [domain] domain."*
+
+### Input (passed by spec-delta)
+
+- Domain name (e.g., `billing`)
+- Test source root: `src/test/java/`
+
+### `test-scenarios.md` Format
+
+Generated by docflow per domain. Scenario IDs (before the colon) are kebab-case slugs that map to test method names via camelCase conversion.
+
+```markdown
+# Test Scenarios: billing
+
+## POST /invoices/bulk
+- happy-path: valid list of 3 → 201 + invoice IDs
+- validation-empty-list: empty list → 400
+- validation-negative-amount: negative amount → 422
+- auth-missing-token: missing token → 401
+- business-duplicate-key: duplicate idempotency key → 409
+
+## GET /invoices/{id}
+- happy-path: existing invoice → 200 + full details
+- not-found: non-existent ID → 404
+- auth-other-tenant: other tenant's invoice → 403
+```
+
+### Process
+
+**Step 1: Parse scenario list**
+
+Read `docs/domains/<domain>/test-scenarios.md`. Extract all `{endpoint, scenario-id, scenario-description}` triples.
+
+**Step 2: Scan existing test methods**
+
+```bash
+bin/jkit skel src/test/java/<group-path>/<service>/<domain>/
+```
+
+If no test class exists for the domain → all scenarios are gaps.
+
+From JSON output: collect all test method names.
+
+**Step 3: Match and diff**
+
+For each scenario ID, convert kebab-case to camelCase (e.g., `happy-path` → `happyPath`, `validation-empty-list` → `validationEmptyList`). A scenario is **implemented** if at least one test method name contains its camelCase slug.
+
+**Step 4: Return gap list**
+
+Return all unmatched scenarios as:
+```
+[{domain, endpoint, scenario_id, scenario_description}, ...]
+```
+
+Caller (spec-delta) writes this into the **Test Scenario Gaps** section of change-summary.md.
 
 ---
 
@@ -599,6 +705,7 @@ This iteration is delivered as two or three commits (one per skill, or combined)
 
 ```
 feat: add spec-delta skill
+feat: add scenario-gap skill
 feat: add sql-migration skill
 feat: add java-tdd skill
 ```
