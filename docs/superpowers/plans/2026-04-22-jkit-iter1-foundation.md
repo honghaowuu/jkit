@@ -26,7 +26,6 @@
 | `templates/docker-compose.test.yml` | Update (add JaCoCo TCP server agent, volumes, port 6300, network) |
 | `templates/pom-fragments/jacoco.xml` | Create (5-execution JaCoCo plugin config) |
 | `templates/pom-fragments/quality.xml` | Create (Checkstyle + PMD + SpotBugs) |
-| `templates/pom-fragments/springdoc.xml` | Create (springdoc-openapi dependency) |
 | `reference/jkit.md` | Create (CLI reference — author aid, not shipped) |
 
 ---
@@ -649,36 +648,7 @@ Expected: `OK`
 
 ---
 
-### Task 13: Create templates/pom-fragments/springdoc.xml
-
-**Files:**
-- Create: `templates/pom-fragments/springdoc.xml`
-
-- [ ] **Step 1: Write templates/pom-fragments/springdoc.xml**
-
-Write `templates/pom-fragments/springdoc.xml`:
-
-```xml
-<!-- springdoc-openapi — add inside <dependencies> -->
-<!-- Generates OpenAPI spec at /v3/api-docs when the app is running -->
-<dependency>
-    <groupId>org.springdoc</groupId>
-    <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-    <version>2.3.0</version>
-</dependency>
-```
-
-- [ ] **Step 2: Validate XML**
-
-```bash
-python3 -c "import xml.etree.ElementTree as ET; ET.parse('templates/pom-fragments/springdoc.xml'); print('OK')"
-```
-
-Expected: `OK`
-
----
-
-### Task 14: Create reference/jkit.md
+### Task 13: Create reference/jkit.md
 
 **Files:**
 - Create: `reference/jkit.md`
@@ -802,7 +772,7 @@ Reads all `api-spec.yaml` files under `<domains-dir>`, scans `<test-src-dir>` fo
 
 ---
 
-### Task 15: Commit Iteration 1
+### Task 14: Commit Iteration 1
 
 - [ ] **Step 1: Stage all files**
 
@@ -811,7 +781,7 @@ git add .claude-plugin/plugin.json
 git add hooks/hooks.json hooks/run-hook.cmd hooks/session-start hooks/jkit-context.md hooks/post-commit-sync.sh
 git add bin/jkit
 git add templates/envrc templates/example.env templates/docker-compose.test.yml
-git add templates/pom-fragments/jacoco.xml templates/pom-fragments/quality.xml templates/pom-fragments/springdoc.xml
+git add templates/pom-fragments/jacoco.xml templates/pom-fragments/quality.xml
 git add reference/jkit.md
 ```
 
