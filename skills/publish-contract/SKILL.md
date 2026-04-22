@@ -9,59 +9,55 @@ description: Use when publishing the service API contract for other microservice
 
 ## Checklist
 
+**Unchanged from iter4:**
 - [ ] Extract service metadata
 - [ ] Check for existing contract
-- [ ] Find and confirm controller path
-- [ ] Scan with jkit skel
+- [ ] Find and confirm controller path + jkit skel scan
 - [ ] Javadoc quality check
-- [ ] Map controllers to domains
+- [ ] Map controllers to domains + HARD-GATE approval
 - [ ] Structured interview (7 questions)
 - [ ] Generate contract.yaml (smart-doc)
-- [ ] Write overview.md + domains/*.md
-- [ ] Optional: ship to shared location
-- [ ] Commit
+
+**Changed/new:**
+- [ ] Add .jkit/contract-stage/ to .gitignore if not present
+- [ ] Write SKILL.md + domains/*.md to .jkit/contract-stage/{service-name}/
+- [ ] Read .jkit/contract.json — if missing, ask for contractRepo SSH URL, save
+- [ ] Read .jkit/contract.json — if missing, ask for marketplaceRepo SSH URL, save
+- [ ] Read .jkit/contract.json — if missing, ask for marketplaceName, save
+- [ ] HARD-GATE: show diff of changes to be pushed, confirm before any git push
+- [ ] Push contract plugin repo
+- [ ] Clone marketplace, update marketplace.json, push, delete clone
+- [ ] Run: claude plugin marketplace update {marketplaceName}
+- [ ] Write .jkit/marketplace-catalog.json from updated marketplace.json
+- [ ] Commit .jkit/contract.json + .jkit/marketplace-catalog.json in service repo
 
 ## Process Flow
 
 ```dot
-digraph publish_contract {
-    "Extract service metadata\n(spring.application.name, artifactId, groupId)" [shape=box];
-    "Existing contract?" [shape=diamond];
-    "HARD-GATE: overwrite approval" [shape=box style=filled fillcolor=lightyellow];
-    "Find api/ package\njkit skel scan" [shape=box];
-    "Thin Javadoc?" [shape=diamond];
-    "Improve inline\nre-scan" [shape=box];
-    "Map controllers to domains" [shape=box];
-    "HARD-GATE: domain approval" [shape=box style=filled fillcolor=lightyellow];
-    "Structured interview\n(7 questions, one at a time)" [shape=box];
-    "Generate contract.yaml\n(smart-doc)" [shape=box];
-    "Write overview.md\n+ domains/*.md" [shape=box];
-    "Ship requested?" [shape=diamond];
-    "Copy to ../microservices/" [shape=box];
-    "Commit" [shape=doublecircle];
+digraph publish_contract_v2 {
+    "Steps 1–7\n(unchanged from iter4)" [shape=box];
+    "Write SKILL.md\n+ domains/*.md\nto .jkit/contract-stage/" [shape=box];
+    "Read .jkit/contract.json\n(ask for missing fields)" [shape=box];
+    "HARD-GATE: show diff\nconfirm before push" [shape=box style=filled fillcolor=lightyellow];
+    "Push contract plugin repo\n(init or update)" [shape=box];
+    "Clone marketplace\nupdate marketplace.json\npush + delete clone" [shape=box];
+    "claude plugin marketplace\nupdate {marketplaceName}" [shape=box];
+    "Write .jkit/marketplace-catalog.json" [shape=box];
+    "Commit .jkit/contract.json\n+ .jkit/marketplace-catalog.json" [shape=doublecircle];
 
-    "Extract service metadata\n(spring.application.name, artifactId, groupId)" -> "Existing contract?";
-    "Existing contract?" -> "HARD-GATE: overwrite approval" [label="yes"];
-    "Existing contract?" -> "Find api/ package\njkit skel scan" [label="no"];
-    "HARD-GATE: overwrite approval" -> "Find api/ package\njkit skel scan" [label="approved"];
-    "HARD-GATE: overwrite approval" -> "Commit" [label="abort"];
-    "Find api/ package\njkit skel scan" -> "Thin Javadoc?";
-    "Thin Javadoc?" -> "Improve inline\nre-scan" [label="yes"];
-    "Thin Javadoc?" -> "Map controllers to domains" [label="no"];
-    "Improve inline\nre-scan" -> "Map controllers to domains";
-    "Map controllers to domains" -> "HARD-GATE: domain approval";
-    "HARD-GATE: domain approval" -> "Structured interview\n(7 questions, one at a time)" [label="approved"];
-    "HARD-GATE: domain approval" -> "Map controllers to domains" [label="edit requested"];
-    "Structured interview\n(7 questions, one at a time)" -> "Generate contract.yaml\n(smart-doc)";
-    "Generate contract.yaml\n(smart-doc)" -> "Write overview.md\n+ domains/*.md";
-    "Write overview.md\n+ domains/*.md" -> "Ship requested?";
-    "Ship requested?" -> "Copy to ../microservices/" [label="yes"];
-    "Ship requested?" -> "Commit" [label="no"];
-    "Copy to ../microservices/" -> "Commit";
+    "Steps 1–7\n(unchanged from iter4)" -> "Write SKILL.md\n+ domains/*.md\nto .jkit/contract-stage/";
+    "Write SKILL.md\n+ domains/*.md\nto .jkit/contract-stage/" -> "Read .jkit/contract.json\n(ask for missing fields)";
+    "Read .jkit/contract.json\n(ask for missing fields)" -> "HARD-GATE: show diff\nconfirm before push";
+    "HARD-GATE: show diff\nconfirm before push" -> "Push contract plugin repo\n(init or update)" [label="confirmed"];
+    "HARD-GATE: show diff\nconfirm before push" -> "Commit .jkit/contract.json\n+ .jkit/marketplace-catalog.json" [label="abort"];
+    "Push contract plugin repo\n(init or update)" -> "Clone marketplace\nupdate marketplace.json\npush + delete clone";
+    "Clone marketplace\nupdate marketplace.json\npush + delete clone" -> "claude plugin marketplace\nupdate {marketplaceName}";
+    "claude plugin marketplace\nupdate {marketplaceName}" -> "Write .jkit/marketplace-catalog.json";
+    "Write .jkit/marketplace-catalog.json" -> "Commit .jkit/contract.json\n+ .jkit/marketplace-catalog.json";
 }
 ```
 
-## Detailed Flow
+## Detailed Flow — Steps 1–7 (unchanged)
 
 **Step 1: Extract service metadata**
 
@@ -83,9 +79,9 @@ Also extract from `pom.xml`: `<groupId>`, `<version>`, `<parent><artifactId>` (f
 
 **Step 2: Check for existing contract**
 
-If `docs/contracts/{service-name}/` exists:
+If `.jkit/contract-stage/{service-name}/` exists:
 
-Tell human: `"A contract for {service-name} already exists at docs/contracts/{service-name}/"`
+Tell human: `"A staged contract for {service-name} already exists at .jkit/contract-stage/{service-name}/"`
 
 ```
 A) Overwrite with regenerated version (recommended if endpoints changed)
@@ -94,7 +90,7 @@ C) Abort
 ```
 
 <HARD-GATE>
-Do NOT overwrite an existing contract without explicit human approval (option A or B+confirm).
+Do NOT overwrite an existing staged contract without explicit human approval (option A or B+confirm).
 </HARD-GATE>
 
 **Step 3: Find controller path and scan**
@@ -122,7 +118,7 @@ From JSON output: identify classes with `@RestController` or `@Controller` annot
 For every public method, check `has_docstring` and `docstring_text`. Insufficient if any:
 - `has_docstring` is false
 - `docstring_text` is null or empty
-- `docstring_text` only restates the method name (e.g., method `getUserById`, docstring says "Gets user by id")
+- `docstring_text` only restates the method name
 
 If ANY method has missing or insufficient Javadoc:
 
@@ -130,19 +126,15 @@ If ANY method has missing or insufficient Javadoc:
 > A) Improve Javadoc inline — I'll update the controller comments, then re-scan (recommended)
 > B) Proceed with current quality — I understand the contract will need manual editing"
 
-On A: read each controller, identify thin/missing Javadoc, write improved comments. Do not rewrite correct comments — only fill gaps. Re-run `jkit skel` to confirm. Do not use pre-improvement signature data after re-scan.
+On A: read each controller, fill missing/thin Javadoc, re-run `jkit skel` to confirm. Do not use pre-improvement data after re-scan.
 
 **Step 5: Map controllers to domains**
 
 One controller file = one domain (strip `Controller` suffix: `InvoiceController` → `invoice`).
 
-Exception: if two files share the same domain prefix (`OrderQueryController` + `OrderCommandController`), propose merging into one `order` domain.
+Exception: if two files share the same domain prefix, propose merging into one domain.
 
-Present proposed domain list:
-> "I'll organize this service into the following domains:
-> 1. `invoice` — from InvoiceController.java
-> 2. `payment` — from PaymentController.java
-> Does this look correct? You can rename, merge, or split domains."
+Present proposed domain list and ask for confirmation.
 
 <HARD-GATE>
 Do NOT generate any output until the human confirms the domain mapping.
@@ -151,47 +143,19 @@ The confirmed domain list is the authoritative input for all output generation.
 
 **Step 6: Structured interview**
 
-Ask one at a time. Always offer a draft — never ask open-ended when a draft is possible.
+Ask one at a time. Always offer a draft.
 
-1. **`description`** — draft from class-level Javadoc:
-   > "Draft description: '[draft]'. Does this capture what the service does?"
+1. **`description`** — draft from class-level Javadoc
+2. **`use_when`** — infer 2–4 scenarios from capability names
+3. **`invariants`** — draft from Javadoc preconditions and `@throws`
+4. **`keywords`** — draft from module names and prominent Javadoc nouns
+5. **`not_responsible_for`** — infer what adjacent domains this service does NOT own
+6. **`SDK`** — check parent `pom.xml` for `<module>` ending in `-api`
+7. **`authentication`** — draft from security annotations or ask (Bearer / API key / mTLS / None)
 
-2. **`use_when`** — infer 2–4 scenarios from capability names:
-   > "Draft scenarios for when to call this service:
-   > - [scenario 1]
-   > - [scenario 2]
-   > Add, remove, or reword."
+**Step 7: Generate contract.yaml (smart-doc)**
 
-3. **`invariants`** — draft from Javadoc preconditions and `@throws`:
-   > "Draft invariants from Javadoc:
-   > - [invariant 1]
-   > Are these correct? Add or remove any."
-   If no basis for inference: *"What business rules always hold for this service?"*
-
-4. **`keywords`** — draft from module names and prominent Javadoc nouns:
-   > "Draft keywords: [draft list]. Correct or add?"
-
-5. **`not_responsible_for`** — infer what adjacent domains this service name implies it does NOT own:
-   > "Based on this service's scope, I'd suggest it is NOT responsible for:
-   > - [domain 1]
-   > Confirm, edit, or answer 'none'."
-
-6. **`SDK`** — check parent `pom.xml` for a `<module>` entry matching `{service-name}-api` or ending in `-api`:
-   - Found → *"Found Feign client module `{module}`. SDK will be `{groupId}:{module}:{version}` — correct?"*
-   - Not found → *"No SDK module found. Is there a Feign client artifact, or is this service called directly via HTTP?"*
-
-7. **`authentication`** — draft from Javadoc security annotations or ask:
-   > "What authentication does this service require?
-   > A) Bearer token (recommended if using Spring Security)
-   > B) API key
-   > C) mTLS
-   > D) None / internal only"
-
-**Step 7: Generate contract.yaml**
-
-**Phase 1 — Add smart-doc plugin if missing:**
-
-Check `pom.xml` for `smart-doc-maven-plugin`. If absent, add:
+Add smart-doc plugin to `pom.xml` if missing:
 
 ```xml
 <plugin>
@@ -204,29 +168,11 @@ Check `pom.xml` for `smart-doc-maven-plugin`. If absent, add:
 </plugin>
 ```
 
-**Phase 2 — Write smart-doc.json:**
-
-Derive `{package-filter}` from the api package path (e.g., `src/main/java/com/example/myservice/api` → `com.example.myservice.api`).
-
-If SDK module confirmed in Step 6:
+Write `smart-doc.json` (merge if exists — preserve existing fields, update only `outPath`, `openApiAllInOne`, `sourceCodePaths`):
 
 ```json
 {
-  "outPath": "docs/contracts/{service-name}/reference",
-  "openApiAllInOne": true,
-  "packageFilters": "{package-filter}",
-  "sourceCodePaths": [
-    {"path": "src/main/java", "desc": "{service-name} service"},
-    {"path": "../{sdk-module}/src/main/java", "desc": "{sdk-module}"}
-  ]
-}
-```
-
-If no SDK module:
-
-```json
-{
-  "outPath": "docs/contracts/{service-name}/reference",
+  "outPath": ".jkit/contract-stage/{service-name}/reference",
   "openApiAllInOne": true,
   "packageFilters": "{package-filter}",
   "sourceCodePaths": [
@@ -235,77 +181,85 @@ If no SDK module:
 }
 ```
 
-If `smart-doc.json` already exists: merge only `outPath`, `openApiAllInOne`, `sourceCodePaths` — preserve all other fields verbatim.
-
-**Phase 3 — Generate and convert:**
+Run:
 
 ```bash
 mvn smart-doc:openapi
 ```
 
-Smart-doc outputs JSON. Convert to YAML:
+Convert JSON → YAML:
 
 ```bash
 # Preferred
-yq -o yaml -P docs/contracts/{service-name}/reference/openapi.json \
-  > docs/contracts/{service-name}/reference/contract.yaml
+yq -o yaml -P .jkit/contract-stage/{service-name}/reference/openapi.json \
+  > .jkit/contract-stage/{service-name}/reference/contract.yaml
 
-# Fallback (Python)
+# Fallback
 python3 -c "
 import json, yaml
-with open('docs/contracts/{service-name}/reference/openapi.json') as f:
+with open('.jkit/contract-stage/{service-name}/reference/openapi.json') as f:
     data = json.load(f)
-with open('docs/contracts/{service-name}/reference/contract.yaml', 'w') as f:
+with open('.jkit/contract-stage/{service-name}/reference/contract.yaml', 'w') as f:
     yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 "
-rm docs/contracts/{service-name}/reference/openapi.json
+rm .jkit/contract-stage/{service-name}/reference/openapi.json
 ```
 
-If `mvn smart-doc:openapi` fails or `contract.yaml` is absent → show last 20 lines of Maven output and stop: *"Smart-doc generation failed. Please resolve and re-run."*
+If generation fails → show last 20 lines of Maven output and stop.
 
-**Step 8: Write output files**
+## Detailed Flow — Steps 8–11 (new in iter5)
 
-**`docs/contracts/{service-name}/overview.md`:**
+**Step 8: Write SKILL.md + domains/*.md to contract-stage**
+
+Add `.jkit/contract-stage/` to `.gitignore` if not already present.
+
+Write `.jkit/contract-stage/{service-name}/.claude-plugin/plugin.json`:
+
+```json
+{
+  "name": "{service-name}-contract",
+  "description": "Service contract for {service-name}",
+  "version": "1.0.0",
+  "skills": [
+    { "name": "{service-name}", "path": "skills/{service-name}" }
+  ]
+}
+```
+
+Write `.jkit/contract-stage/{service-name}/skills/{service-name}/SKILL.md`:
 
 ```markdown
 ---
-service: {service-name}
-description: {confirmed description — one sentence}
-
-keywords:
-  - {keyword}
-
-use_when:
-  - {scenario}
-
-not_responsible_for:
-  - {domain}
+name: {service-name}
+description: Use when your task involves {use_when summary — one sentence}.
+keywords: [{keyword}, ...]
 ---
 
 ## Overview
 
 {2–3 sentences: service responsibility and integration context}
 
-**Registry name:** `{registry-name}`
+**Not responsible for:** {not_responsible_for list, or omit if none}
 
 ---
 
 ## Domains
 
 ### {domain-name}
-{One sentence: what this domain handles. Include "NOT for X" if another domain could be confused.}
-→ Read [`domains/{domain-name}.md`](domains/{domain-name}.md)
+{One sentence: what this domain handles.}
+→ Read [`domains/{domain-name}.md`](../../domains/{domain-name}.md)
 
 ---
 
-## Cross-Domain Relations
+## How to navigate this contract
 
-{Relations drawn from Javadoc, or "N/A — single domain service."}
-
----
+- **Find the right domain:** Read the domain summary above, then open `domains/{domain-name}.md`
+- **Find the right API:** The domain file lists all APIs with intent descriptions
+- **Get the schema:** Grep `reference/contract.yaml` for the path once the API is identified
 
 ## SDK
 
+(Include only if SDK was confirmed in interview Step 6)
 ```xml
 <dependency>
     <groupId>{group-id}</groupId>
@@ -315,9 +269,7 @@ not_responsible_for:
 ```
 ```
 
-Omit `not_responsible_for` block if user answered "none". Omit `## SDK` section if no SDK exists.
-
-**`docs/contracts/{service-name}/domains/{domain-name}.md` (one per domain):**
+Write `.jkit/contract-stage/{service-name}/domains/{domain-name}.md` (one per confirmed domain):
 
 API entry rules:
 - Mark 1–2 entries per domain with `⭐` (primary entry points — prefer state-changing methods)
@@ -350,61 +302,92 @@ API entry rules:
 - {invariant or precondition confirmed in interview}
 ```
 
-**Step 9: Ship (optional)**
+**Step 9: Read .jkit/contract.json and ask for missing fields**
 
-Only if the user included "ship" in their request.
+If `.jkit/contract.json` is missing or any field is absent, ask one at a time:
+1. *"GitHub SSH URL for the contract plugin repo (e.g., `git@github.com:{org}/{service-name}-contract.git`):"*
+2. *"GitHub SSH URL for the marketplace repo (e.g., `git@github.com:{org}/marketplace.git`):"*
+3. *"Marketplace name (the `name` field in marketplace.json, e.g., `{org}-marketplace`):"*
+
+Save to `.jkit/contract.json`:
+
+```json
+{
+  "contractRepo": "git@github.com:{org}/{service-name}-contract.git",
+  "marketplaceRepo": "git@github.com:{org}/marketplace.git",
+  "marketplaceName": "{org}-marketplace"
+}
+```
+
+**Step 10: HARD-GATE — diff and confirm before push**
+
+Show what will be pushed:
 
 ```bash
-cp -r docs/contracts/{service-name} ../microservices/{service-name}
+# Show diff of staged contract vs current remote (or all files if first push)
+git -C ".jkit/contract-stage/{service-name}" diff HEAD 2>/dev/null || \
+  echo "(first push — all files are new)"
 ```
 
-If `../microservices/` does not exist → stop: *"Cannot ship: `../microservices/` not found. Copy manually from `docs/contracts/{service-name}/`."*
-
-If `../microservices/{service-name}` already exists → ask:
+Ask:
 ```
-A) Overwrite (recommended if contract changed)
-B) Abort
+A) Push to GitHub and update marketplace (recommended)
+B) Abort — I'll review the files first
 ```
 
-**Step 10: Commit**
+<HARD-GATE>
+Do NOT run any git push until the human confirms.
+</HARD-GATE>
 
-`smart-doc.json` is a build config for this microservice — commit it separately if newly created:
+On abort: still proceed to Step 11 commit (`.jkit/contract.json` is worth saving regardless).
+
+**Step 11: Push, update marketplace, refresh catalog, commit**
+
+On confirmed push:
 
 ```bash
-# If smart-doc.json was newly created this run
+# Note: GitHub repo at contractRepo must be empty (no auto-generated README/license)
+# Inform the human before first push: "The remote repo must be empty — no auto-generated README or license."
+
+bin/contract-push.sh {service-name} {contractRepo}
+bin/marketplace-publish.sh {marketplaceRepo} {service-name} "{description}" {contractRepo}
+bin/marketplace-sync.sh {marketplaceRepo} {marketplaceName}
+```
+
+Then commit in service repo:
+
+```bash
+# smart-doc.json if newly created this run
 git add smart-doc.json pom.xml
 git commit -m "chore(impl): add smart-doc configuration"
-```
 
-Commit the contract output separately:
-
-```bash
-git add docs/contracts/{service-name}/
+# SSH config + catalog + gitignore
+git add .jkit/contract.json .jkit/marketplace-catalog.json .gitignore
 git commit -m "chore(impl): publish service contract for {service-name}"
 ```
 
-The `(impl):` scope triggers the post-commit hook to update `.jkit/spec-sync`.
+This commit happens whether or not the push was confirmed at the HARD-GATE. The SSH URLs and catalog are not sensitive.
 
-## Output Location
-
-`publish-contract` runs inside a **microservice project** (not the jkit plugin repo). Output goes into that service's own repository:
+## Contract Plugin Repo Structure
 
 ```
-<microservice-repo>/
-  docs/contracts/
-    <service-name>/
-      overview.md              ← Level 1+2: hook-injected frontmatter + domain routing
-      domains/
-        <domain-name>.md       ← Level 3: API list per domain
-      reference/
-        contract.yaml          ← Level 4: full OpenAPI schemas (grepped on demand)
-  smart-doc.json               ← build config, stays in microservice repo only
+{service-name}-contract/
+├── .claude-plugin/
+│   └── plugin.json
+├── skills/
+│   └── {service-name}/
+│       └── SKILL.md             ← Level 1+2
+├── domains/
+│   └── {domain-name}.md         ← Level 3
+└── reference/
+    └── contract.yaml            ← Level 4
 ```
 
-What gets shipped to consuming repos (Step 9 ship, or manual copy):
+## 4-Level Progressive Disclosure Map
 
-```
-docs/contracts/<service-name>/   ← only this directory
-```
-
-`smart-doc.json` and `pom.xml` changes stay in the microservice repo. Never shipped.
+| Level | Location | When invoked | Answers |
+|---|---|---|---|
+| 1 | `SKILL.md` frontmatter | Skill selected | Is this the right service? |
+| 2 | `SKILL.md` body | Skill invoked | Is this the right domain? |
+| 3 | `domains/{name}.md` | Domain drill-down | Is this the right API? |
+| 4 | `reference/contract.yaml` | API resolution (grepped) | What are the schemas? |
