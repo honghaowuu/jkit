@@ -1,6 +1,5 @@
-<!-- Quality plugins — paste contents into <build><plugins> -->
+<!-- Quality plugins — paste into <build><plugins> -->
 <!-- Spotless: auto-fix formatting. PMD + SpotBugs: static + bytecode analysis. -->
-<plugins>
 
 <!-- Spotless: enforces google-java-format — run `mvn spotless:apply` to auto-fix before verify -->
 <plugin>
@@ -60,5 +59,3 @@
         </execution>
     </executions>
 </plugin>
-
-</plugins>
