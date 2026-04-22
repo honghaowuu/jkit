@@ -5,8 +5,6 @@ description: Use when a spec change implies database schema changes and a Flyway
 
 **Announcement:** At start: *"I'm using the sql-migration skill to generate the Flyway migration for the schema changes."*
 
-## Skill Type: Technique/Pattern with HARD-GATEs
-
 ## Checklist
 
 - [ ] Introspect live schema

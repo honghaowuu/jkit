@@ -5,8 +5,6 @@ description: Use when verifying all quality gates and coverage after scenario-td
 
 **Announcement:** At start: *"I'm using the java-verify skill to run quality gates and coverage checks."*
 
-## Skill Type: Technique/Pattern
-
 ## Checklist
 
 - [ ] Load java-coding-standards
@@ -92,8 +90,3 @@ java-verify does NOT own the final commit. The commit is `java-tdd`'s responsibi
 
 **REQUIRED SUB-SKILL: invoke `superpowers:requesting-code-review`.**
 
-## Superpowers Integration
-
-| Superpowers skill | How used |
-|---|---|
-| `superpowers:requesting-code-review` | Always — final step after all checks pass |

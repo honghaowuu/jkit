@@ -1,4 +1,5 @@
-This is a jkit-managed Java/Spring Boot microservice project.
+<jkit-project-context>
+This is a jkit-managed Java/Spring Boot microservice project. Apply these conventions throughout the session.
 
 ## Commit conventions
 
@@ -9,19 +10,21 @@ This is a jkit-managed Java/Spring Boot microservice project.
 | `fix(impl):` | Bug fix implementation |
 | `chore(impl):` | Non-feature implementation work |
 
-The `(impl):` scope triggers the post-commit hook to update `.jkit/spec-sync`.
+The `(impl):` scope triggers the post-commit hook to update `.jkit/spec-sync`. Always use a scoped commit for implementation work.
 
 ## Environment
 
-Single `application.yml` using `${ENV_VAR:default}`. No `application-{profile}.yml` files.
-- Local dev: `direnv` auto-loads `.env/local.env` when you enter the project directory
+Single `application.yml` with `${ENV_VAR:default}`. No `application-{profile}.yml` profiles.
+- Local dev: `direnv` auto-loads `.env/local.env` on `cd`
 - Other envs: `JKIT_ENV=test direnv exec . <cmd>`
 
-## Key skills
+## Skills — when to invoke
 
-- **spec-delta** — compute requirements delta since last implementation → drives full spec-to-commit cycle
-- **java-tdd** — TDD implementation with JaCoCo unit coverage gap analysis
-- **scenario-gap** — detect unimplemented scenarios per domain from test-scenarios.md; invoked by spec-delta
-- **scenario-tdd** — implement missing scenarios via integration TDD: one at a time, RED → GREEN
-- **java-verify** — quality gate: mvn verify + merged coverage check + code review handoff
-- **publish-contract** — generate 4-level progressive disclosure contract for other services to consume
+- `/spec-delta` — start here: compute what changed in docs/domains/ since last implementation, then drive the full cycle to commit
+- `/java-tdd` — implement a plan via TDD with JaCoCo unit coverage gap analysis
+- `/scenario-tdd` — implement integration test gaps from change-summary.md, one scenario at a time
+- `/java-verify` — run quality gates: mvn verify + merged coverage + API coverage + code review handoff
+- `/publish-contract` — generate and push the 4-level service contract for other teams
+- `/install-contracts` — add upstream service contract plugins as dependencies
+- `/generate-feign` — generate a Feign client from an installed contract plugin
+</jkit-project-context>

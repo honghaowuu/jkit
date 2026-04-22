@@ -3,16 +3,7 @@ name: spec-delta
 description: Use when computing which spec changes in docs/domains/ need to be implemented since the last implementation commit.
 ---
 
-```
-<SUBAGENT-STOP>
-If you were dispatched as a subagent to implement a specific task, skip this skill.
-spec-delta is the orchestration entry point, not a task implementation skill.
-</SUBAGENT-STOP>
-```
-
 **Announcement:** At start: *"I'm using the spec-delta skill to compute the requirements delta and drive the implementation pipeline."*
-
-## Skill Type: Technique/Pattern with HARD-GATEs (Orchestrator)
 
 ## Checklist
 
@@ -266,8 +257,3 @@ docs/
       ...
 ```
 
-## Superpowers Integration
-
-| Superpowers skill | How used |
-|---|---|
-| `superpowers:writing-plans` | Plan location + header note overridden |

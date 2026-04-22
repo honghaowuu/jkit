@@ -5,8 +5,6 @@ description: Use when publishing the service API contract for other microservice
 
 **Announcement:** At start: *"I'm using the publish-contract skill to generate the service contract for other teams."*
 
-## Skill Type: Technique/Pattern with HARD-GATEs
-
 ## Checklist
 
 **Unchanged from iter4:**

@@ -3,6 +3,18 @@ set -euo pipefail
 
 PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# JSON string escaping — pure bash, no Python dependency
+# Same technique as superpowers session-start.
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
 # 1. Install direnv if missing
 if ! command -v direnv &>/dev/null; then
   echo "jkit: direnv not found — installing..." >&2
@@ -60,16 +72,17 @@ PYEOF
   CONTEXT="${CONTEXT}${CATALOG_BLOCK}"
 fi
 
-# Platform detection (follows superpowers pattern)
+context_escaped=$(escape_for_json "$CONTEXT")
+
+# Platform detection — emit only the field the current platform consumes
 if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
   # Cursor
-  printf '{"additional_context": %s}\n' "$(printf '%s' "$CONTEXT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+  printf '{"additional_context": "%s"}\n' "$context_escaped"
 elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${COPILOT_CLI:-}" ]; then
   # Claude Code
-  printf '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": %s}}\n' \
-    "$(printf '%s' "$CONTEXT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+  printf '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "%s"}}\n' "$context_escaped"
 else
-  # SDK / fallback
-  printf '{"additionalContext": %s}\n' "$(printf '%s' "$CONTEXT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+  # Copilot CLI / SDK fallback
+  printf '{"additionalContext": "%s"}\n' "$context_escaped"
 fi
 exit 0

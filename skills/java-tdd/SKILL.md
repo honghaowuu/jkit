@@ -5,8 +5,6 @@ description: Use when implementing any Java feature or bugfix in this project vi
 
 **Announcement:** At start: *"I'm using the java-tdd skill to implement this plan via TDD with JaCoCo coverage analysis."*
 
-## Skill Type: Discipline-Enforcing
-
 ## Iron Law
 
 ```
@@ -166,11 +164,3 @@ Commit message MUST use one of:
 
 The post-commit hook will update `.jkit/spec-sync` automatically.
 
-## Superpowers Integration
-
-| Superpowers skill | How used |
-|---|---|
-| `superpowers:test-driven-development` | Full RED/GREEN/REFACTOR per task and per coverage gap |
-| `superpowers:subagent-driven-development` | Subagent-driven execution mode |
-| `superpowers:executing-plans` | Inline execution mode |
-| `superpowers:requesting-code-review` | After all tasks pass — invoked by java-verify via scenario-tdd |

@@ -5,8 +5,6 @@ description: Use when implementing integration test scenarios identified as gaps
 
 **Announcement:** At start: *"I'm using the scenario-tdd skill to implement scenario gaps for the [domain] domain via integration TDD."*
 
-## Skill Type: Discipline-Enforcing
-
 ## Iron Law
 
 ```
@@ -173,8 +171,3 @@ class BillingIntegrationTest {
 
 scenario-tdd does NOT own the commit. The commit is `java-tdd`'s responsibility.
 
-## Superpowers Integration
-
-| Superpowers skill | How used |
-|---|---|
-| `superpowers:systematic-debugging` | When production code fails a correct integration test after one self-fix pass |

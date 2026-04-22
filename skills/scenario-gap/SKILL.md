@@ -5,8 +5,6 @@ description: Use when detecting unimplemented test scenarios for a domain that h
 
 **Announcement:** At start: *"I'm using the scenario-gap skill to detect unimplemented scenarios for the [domain] domain."*
 
-## Skill Type: Utility (returns structured output to caller)
-
 ## Input (passed by spec-delta)
 
 - Domain name (e.g., `billing`)
