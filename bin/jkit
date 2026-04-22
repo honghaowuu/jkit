@@ -1,0 +1,10 @@
+: << 'CMDBLOCK'
+@echo off
+"%~dp0jkit-windows-x86_64.exe" %*
+exit /b %ERRORLEVEL%
+CMDBLOCK
+#!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m)"
+exec "$SCRIPT_DIR/jkit-${OS}-${ARCH}" "$@"

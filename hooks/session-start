@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# 1. Install direnv if missing
+if ! command -v direnv &>/dev/null; then
+  echo "jkit: direnv not found — installing..." >&2
+  curl -sfL https://direnv.net/install.sh | bash 2>/dev/null \
+    || echo "jkit: direnv install failed. Install manually: https://direnv.net" >&2
+fi
+
+# 2. Allow .envrc (idempotent — keyed by .envrc hash, silent no-op when already allowed)
+if command -v direnv &>/dev/null && [ -f ".envrc" ]; then
+  direnv allow . 2>/dev/null || true
+fi
+
+# 3. Validate jkit CLI
+if [ ! -x "${PLUGIN_ROOT}/bin/jkit" ]; then
+  echo "jkit: bin/jkit missing or not executable. Run: chmod +x ~/.claude/plugins/jkit/bin/*" >&2
+fi
+
+# 4. Conditional context injection — only for jkit-managed projects
+if [ ! -f ".jkit/spec-sync" ]; then
+  printf '{}\n'
+  exit 0
+fi
+
+CONTEXT=$(cat "${PLUGIN_ROOT}/hooks/jkit-context.md")
+
+# Platform detection (follows superpowers pattern)
+if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
+  # Cursor
+  printf '{"additional_context": %s}\n' "$(printf '%s' "$CONTEXT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${COPILOT_CLI:-}" ]; then
+  # Claude Code
+  printf '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": %s}}\n' \
+    "$(printf '%s' "$CONTEXT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+else
+  # SDK / fallback
+  printf '{"additionalContext": %s}\n' "$(printf '%s' "$CONTEXT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+fi
+exit 0

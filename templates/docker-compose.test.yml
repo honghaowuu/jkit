@@ -1,8 +1,8 @@
 version: '3.8'
 
-# Test environment: spins up service + all dependencies
-# Usage: docker-compose -f docker-compose.test.yml up -d
-# Then: source .env/test.env && mvn test -Dtest=*IntegrationTest
+# Legacy Spring Boot (< 3.1) test environment.
+# Usage: docker compose -f docker-compose.test.yml up -d
+# Then: JKIT_ENV=test direnv exec . mvn test -Dtest=*IntegrationTest
 
 services:
   postgres:
@@ -11,8 +11,8 @@ services:
       POSTGRES_DB: ${DB_NAME:-test_db}
       POSTGRES_USER: ${DB_USER:-test_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-test_password}
-    ports:
-      - "${DB_PORT:-5433}:5432"
+    networks:
+      - test-net
 
   wiremock:
     image: wiremock/wiremock:3.3.1
@@ -20,6 +20,8 @@ services:
       - "8089:8080"
     volumes:
       - ./src/test/resources/wiremock:/home/wiremock
+    networks:
+      - test-net
 
   app:
     build: .
@@ -27,8 +29,18 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       EXTERNAL_SERVICE_BASE_URL: http://wiremock:8080
+      JAVA_OPTS: >-
+        -javaagent:/jacoco/jacocoagent.jar=output=tcpserver,port=6300,address=*
     ports:
       - "8080:8080"
+      - "6300:6300"
+    volumes:
+      - ./target/jacoco:/jacoco
     depends_on:
       - postgres
       - wiremock
+    networks:
+      - test-net
+
+networks:
+  test-net:

@@ -1,0 +1,61 @@
+<!-- Quality plugins — paste contents into <build><plugins> -->
+<!-- All three configured to fail the build on violations -->
+<plugins>
+
+<!-- Checkstyle: enforces Google Java style -->
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-checkstyle-plugin</artifactId>
+    <version>3.3.1</version>
+    <configuration>
+        <configLocation>google_checks.xml</configLocation>
+        <consoleOutput>true</consoleOutput>
+        <failOnError>true</failOnError>
+    </configuration>
+    <executions>
+        <execution>
+            <id>checkstyle</id>
+            <phase>verify</phase>
+            <goals><goal>check</goal></goals>
+        </execution>
+    </executions>
+</plugin>
+
+<!-- PMD: static analysis for common defect patterns -->
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-pmd-plugin</artifactId>
+    <version>3.21.0</version>
+    <configuration>
+        <printFailingErrors>true</printFailingErrors>
+        <failOnViolation>true</failOnViolation>
+    </configuration>
+    <executions>
+        <execution>
+            <id>pmd</id>
+            <phase>verify</phase>
+            <goals><goal>check</goal></goals>
+        </execution>
+    </executions>
+</plugin>
+
+<!-- SpotBugs: bytecode analysis for bug patterns -->
+<plugin>
+    <groupId>com.github.spotbugs</groupId>
+    <artifactId>spotbugs-maven-plugin</artifactId>
+    <version>4.8.3.1</version>
+    <configuration>
+        <effort>Max</effort>
+        <threshold>Medium</threshold>
+        <failOnError>true</failOnError>
+    </configuration>
+    <executions>
+        <execution>
+            <id>spotbugs</id>
+            <phase>verify</phase>
+            <goals><goal>check</goal></goals>
+        </execution>
+    </executions>
+</plugin>
+
+</plugins>
