@@ -3,7 +3,7 @@ name: scenario-tdd
 description: Use when implementing integration test scenarios identified as gaps by scenario-gap. Reads the gap list from change-summary.md and implements each via TDD.
 ---
 
-**Announcement:** At start: *"I'm using the scenario-tdd skill to implement scenario gaps for the [domain] domain via integration TDD."*
+**Announcement:** At start: *"I'm using the scenario-tdd skill to implement integration test scenario gaps via TDD."*
 
 ## Iron Law
 
@@ -48,7 +48,7 @@ digraph scenario_tdd {
     "Show scenario to human\n(lightweight gate)" [shape=box];
     "Write failing RestAssured test" [shape=box];
     "Run test → RED?" [shape=diamond];
-    "Test is wrong — rewrite it" [shape=box];
+    "Rewrite test once\n(still green? ask human)" [shape=box];
     "Fix until GREEN" [shape=box];
     "More gaps?" [shape=diamond];
 
@@ -62,8 +62,8 @@ digraph scenario_tdd {
     "Show scenario to human\n(lightweight gate)" -> "Next gap scenario" [label="skip"];
     "Write failing RestAssured test" -> "Run test → RED?";
     "Run test → RED?" -> "Fix until GREEN" [label="yes"];
-    "Run test → RED?" -> "Test is wrong — rewrite it" [label="no (green immediately)"];
-    "Test is wrong — rewrite it" -> "Run test → RED?";
+    "Run test → RED?" -> "Rewrite test once\n(still green? ask human)" [label="no (green immediately)"];
+    "Rewrite test once\n(still green? ask human)" -> "Run test → RED?";
     "Fix until GREEN" -> "More gaps?";
     "More gaps?" -> "Next gap scenario" [label="yes"];
     "More gaps?" -> "Done → invoke java-verify" [label="no"];
@@ -110,7 +110,7 @@ Process gaps in the order they appear in change-summary.md (domain order preserv
 > B) Edit this scenario
 > C) Skip"
 
-**Write the failing test** targeting exactly this scenario. One test method, one assertion.
+**Write the failing test** targeting exactly this scenario. One test method per scenario.
 
 **Run:**
 ```bash
@@ -123,7 +123,7 @@ JKIT_ENV=test direnv exec . mvn test -Dtest=<Domain>IntegrationTest#<methodName>
 ```
 
 - **RED (compilation or assertion failure):** expected — continue to fix.
-- **GREEN immediately:** the test is wrong — it proves nothing. Rewrite it to actually fail.
+- **GREEN immediately:** the test is wrong — it proves nothing. Rewrite it to actually fail. If still green after one rewrite attempt: stop and ask *"This scenario may already be covered. Skip it or adjust the assertion?"*
 
 Fix production code or test setup until GREEN. Then move to next scenario.
 

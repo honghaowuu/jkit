@@ -22,7 +22,7 @@ description: Use when you need to generate a Feign client for an upstream micros
 digraph generate_feign {
     "Identify target service\nfrom task context" [shape=box];
     "Contract plugin installed?" [shape=diamond];
-    "Stop: run install-contracts first" [shape=box];
+    "Offer: run install-contracts now?" [shape=box];
     "Invoke /{service-name} skill\nnavigate to right API" [shape=box];
     "SDK declared in SKILL.md?" [shape=diamond];
     "Offer: use SDK dependency\ninstead of generating" [shape=box];
@@ -35,7 +35,7 @@ digraph generate_feign {
     "Write integration test scaffold" [shape=doublecircle];
 
     "Identify target service\nfrom task context" -> "Contract plugin installed?";
-    "Contract plugin installed?" -> "Stop: run install-contracts first" [label="no"];
+    "Contract plugin installed?" -> "Offer: run install-contracts now?" [label="no"];
     "Contract plugin installed?" -> "Invoke /{service-name} skill\nnavigate to right API" [label="yes"];
     "Invoke /{service-name} skill\nnavigate to right API" -> "SDK declared in SKILL.md?";
     "SDK declared in SKILL.md?" -> "Offer: use SDK dependency\ninstead of generating" [label="yes"];
@@ -50,6 +50,56 @@ digraph generate_feign {
     "Generate Feign client\nin feign/ package" -> "Write integration test scaffold";
 }
 ```
+
+## Detailed Flow
+
+**Step 1: Identify target service**
+
+Read the task context to determine which upstream service is needed. If ambiguous, ask: *"Which service do you need a Feign client for?"*
+
+**Step 2: Confirm contract plugin is installed**
+
+Check whether `/{service-name}` skill is available (the contract plugin is installed). If not:
+
+> "Contract plugin for `{service-name}` not found.
+> A) Run install-contracts now to add it (recommended)
+> B) Abort"
+
+On A: **REQUIRED SUB-SKILL: invoke `install-contracts`**, then continue from Step 3.
+
+**Step 3: Navigate the contract**
+
+**REQUIRED SUB-SKILL: invoke `/{service-name}`** to load the contract. Navigate from SKILL.md (Level 1–2) → `domains/{domain-name}.md` (Level 3) to find the right API. Once identified, grep `reference/contract.yaml` for the path (Level 4) to get request/response schemas.
+
+**Step 4: Check for SDK**
+
+If the contract SKILL.md has a `## SDK` section, offer:
+> "An SDK is available: `{groupId}:{artifactId}:{version}`. Add this dependency instead of generating a Feign client?
+> A) Use SDK (recommended — fewer files to maintain)
+> B) Generate Feign client anyway"
+
+On A: add the dependency to `pom.xml` and stop.
+
+**Step 5: Determine generation scope**
+
+If the task context specifies which endpoints are needed, use that. Otherwise ask:
+> "Generate:
+> A) Full client — all endpoints in the contract
+> B) Scoped — specific path prefix or tag (tell me which)"
+
+**Step 6: Generate Feign client**
+
+Write `src/main/java/{group-path}/feign/{ServiceName}Client.java`:
+- One `@FeignClient` interface per service
+- Method per endpoint from the identified paths in `reference/contract.yaml`
+- Request/response types derived from the contract schemas — create DTOs in `feign/dto/` if no shared types exist
+
+**Step 7: Write integration test scaffold**
+
+Write `src/test/java/{group-path}/feign/{ServiceName}ClientTest.java`:
+- One test method per generated client method
+- Use WireMock to stub the upstream — stub URLs from `reference/contract.yaml`
+- Tests should fail until WireMock stubs are properly configured (RED by default)
 
 ## Contract Plugin Location
 

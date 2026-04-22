@@ -7,33 +7,28 @@ description: Use when publishing the service API contract for other microservice
 
 ## Checklist
 
-**Unchanged from iter4:**
 - [ ] Extract service metadata
-- [ ] Check for existing contract
+- [ ] Check for existing staged contract
 - [ ] Find and confirm controller path + jkit skel scan
 - [ ] Javadoc quality check
 - [ ] Map controllers to domains + HARD-GATE approval
 - [ ] Structured interview (7 questions)
 - [ ] Generate contract.yaml (smart-doc)
-
-**Changed/new:**
 - [ ] Add .jkit/contract-stage/ to .gitignore if not present
 - [ ] Write SKILL.md + domains/*.md to .jkit/contract-stage/{service-name}/
-- [ ] Read .jkit/contract.json — if missing, ask for contractRepo SSH URL, save
-- [ ] Read .jkit/contract.json — if missing, ask for marketplaceRepo SSH URL, save
-- [ ] Read .jkit/contract.json — if missing, ask for marketplaceName, save
-- [ ] HARD-GATE: show diff of changes to be pushed, confirm before any git push
+- [ ] Read .jkit/contract.json — if missing, ask for contractRepo, marketplaceRepo, marketplaceName
+- [ ] HARD-GATE: show files to be pushed, confirm before any git push
 - [ ] Push contract plugin repo
 - [ ] Clone marketplace, update marketplace.json, push, delete clone
 - [ ] Run: claude plugin marketplace update {marketplaceName}
-- [ ] Write .jkit/marketplace-catalog.json from updated marketplace.json
-- [ ] Commit .jkit/contract.json + .jkit/marketplace-catalog.json in service repo
+- [ ] Write .jkit/marketplace-catalog.json
+- [ ] Commit .jkit/contract.json + .gitignore (+ .jkit/marketplace-catalog.json if push confirmed)
 
 ## Process Flow
 
 ```dot
 digraph publish_contract_v2 {
-    "Steps 1–7\n(unchanged from iter4)" [shape=box];
+    "Steps 1–7\n(scan, Javadoc, domains, interview, smart-doc)" [shape=box];
     "Write SKILL.md\n+ domains/*.md\nto .jkit/contract-stage/" [shape=box];
     "Read .jkit/contract.json\n(ask for missing fields)" [shape=box];
     "HARD-GATE: show diff\nconfirm before push" [shape=box style=filled fillcolor=lightyellow];
@@ -43,7 +38,7 @@ digraph publish_contract_v2 {
     "Write .jkit/marketplace-catalog.json" [shape=box];
     "Commit .jkit/contract.json\n+ .jkit/marketplace-catalog.json" [shape=doublecircle];
 
-    "Steps 1–7\n(unchanged from iter4)" -> "Write SKILL.md\n+ domains/*.md\nto .jkit/contract-stage/";
+    "Steps 1–7\n(scan, Javadoc, domains, interview, smart-doc)" -> "Write SKILL.md\n+ domains/*.md\nto .jkit/contract-stage/";
     "Write SKILL.md\n+ domains/*.md\nto .jkit/contract-stage/" -> "Read .jkit/contract.json\n(ask for missing fields)";
     "Read .jkit/contract.json\n(ask for missing fields)" -> "HARD-GATE: show diff\nconfirm before push";
     "HARD-GATE: show diff\nconfirm before push" -> "Push contract plugin repo\n(init or update)" [label="confirmed"];
@@ -55,7 +50,7 @@ digraph publish_contract_v2 {
 }
 ```
 
-## Detailed Flow — Steps 1–7 (unchanged)
+## Detailed Flow
 
 **Step 1: Extract service metadata**
 
@@ -205,7 +200,7 @@ rm .jkit/contract-stage/{service-name}/reference/openapi.json
 
 If generation fails → show last 20 lines of Maven output and stop.
 
-## Detailed Flow — Steps 8–11 (new in iter5)
+## Steps 8–11: Contract Stage and Push
 
 **Step 8: Write SKILL.md + domains/*.md to contract-stage**
 
@@ -317,14 +312,14 @@ Save to `.jkit/contract.json`:
 }
 ```
 
-**Step 10: HARD-GATE — diff and confirm before push**
+**Step 10: HARD-GATE — show files and confirm before push**
 
-Show what will be pushed:
+Show what will be pushed. On first push the stage directory is not a git repo yet, so list files directly:
 
 ```bash
-# Show diff of staged contract vs current remote (or all files if first push)
-git -C ".jkit/contract-stage/{service-name}" diff HEAD 2>/dev/null || \
-  echo "(first push — all files are new)"
+# Subsequent pushes
+git -C ".jkit/contract-stage/{service-name}" diff HEAD 2>/dev/null \
+  || find ".jkit/contract-stage/{service-name}" -type f | sort
 ```
 
 Ask:
@@ -337,34 +332,31 @@ B) Abort — I'll review the files first
 Do NOT run any git push until the human confirms.
 </HARD-GATE>
 
-On abort: still proceed to Step 11 commit (`.jkit/contract.json` is worth saving regardless).
+On abort: skip the push/marketplace steps; proceed to the commit in Step 11 (`.jkit/contract.json` and `.gitignore` are still worth saving).
 
 **Step 11: Push, update marketplace, refresh catalog, commit**
 
 On confirmed push:
 
 ```bash
-# Note: GitHub repo at contractRepo must be empty (no auto-generated README/license)
 # Inform the human before first push: "The remote repo must be empty — no auto-generated README or license."
-
 bin/contract-push.sh {service-name} {contractRepo}
 bin/marketplace-publish.sh {marketplaceRepo} {service-name} "{description}" {contractRepo}
 bin/marketplace-sync.sh {marketplaceRepo} {marketplaceName}
 ```
 
-Then commit in service repo:
+Commit in service repo. Use `chore(contract):` — not `chore(impl):` — so the post-commit hook does not advance `.jkit/spec-sync`.
 
 ```bash
-# smart-doc.json if newly created this run
-git add smart-doc.json pom.xml
-git commit -m "chore(impl): add smart-doc configuration"
+# smart-doc.json only if it was newly created this run
+git diff --quiet smart-doc.json pom.xml 2>/dev/null || \
+  (git add smart-doc.json pom.xml && git commit -m "chore(contract): add smart-doc configuration")
 
-# SSH config + catalog + gitignore
-git add .jkit/contract.json .jkit/marketplace-catalog.json .gitignore
-git commit -m "chore(impl): publish service contract for {service-name}"
+# contract config + gitignore; add catalog only if push was confirmed
+git add .jkit/contract.json .gitignore
+git diff --cached --quiet .jkit/marketplace-catalog.json 2>/dev/null || git add .jkit/marketplace-catalog.json
+git commit -m "chore(contract): publish service contract for {service-name}"
 ```
-
-This commit happens whether or not the push was confirmed at the HARD-GATE. The SSH URLs and catalog are not sensitive.
 
 ## Contract Plugin Repo Structure
 

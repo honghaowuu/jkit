@@ -65,7 +65,7 @@ JKIT_ENV=test direnv exec . mvn verify
 
 Runs: unit tests → quality gates → integration tests (Failsafe) → JaCoCo dump + merge + report.
 
-Fix failures inline. Repeat until green.
+Fix failures inline. Repeat until green. After 3 failed fix attempts: stop, report the root cause to the human, and do not continue.
 
 **Step 3: Coverage check**
 
@@ -88,5 +88,5 @@ bin/jkit coverage --api docs/domains/ src/test/java/
 
 java-verify does NOT own the final commit. The commit is `java-tdd`'s responsibility.
 
-**REQUIRED SUB-SKILL: invoke `superpowers:requesting-code-review`.**
+**REQUIRED SUB-SKILL: invoke `superpowers:requesting-code-review`.** After code review completes, return control to `java-tdd` Step 7 (Final commit).
 

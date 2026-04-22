@@ -8,7 +8,7 @@ description: Use when computing which spec changes in docs/domains/ need to be i
 ## Checklist
 
 - [ ] Sync with remote
-- [ ] Resolve .spec-sync baseline
+- [ ] Resolve .jkit/spec-sync baseline
 - [ ] Compute spec diff
 - [ ] Read overview.md
 - [ ] Order domains by dependency
@@ -42,7 +42,7 @@ digraph spec_delta {
     "HARD-GATE: change-summary approval" [shape=box style=filled fillcolor=lightyellow];
     "Schema changes?" [shape=diamond];
     "REQUIRED SUB-SKILL: sql-migration" [shape=doublecircle];
-    "Invoke writing-plans" [shape=box];
+    "REQUIRED SUB-SKILL: writing-plans" [shape=doublecircle];
     "HARD-GATE: plan approval" [shape=box style=filled fillcolor=lightyellow];
     "Invoke java-tdd" [shape=doublecircle];
 
@@ -61,11 +61,11 @@ digraph spec_delta {
     "HARD-GATE: change-summary approval" -> "Schema changes?" [label="approved"];
     "HARD-GATE: change-summary approval" -> "Write change-summary.md" [label="edit requested"];
     "Schema changes?" -> "REQUIRED SUB-SKILL: sql-migration" [label="yes"];
-    "Schema changes?" -> "Invoke writing-plans" [label="no"];
-    "REQUIRED SUB-SKILL: sql-migration" -> "Invoke writing-plans";
-    "Invoke writing-plans" -> "HARD-GATE: plan approval";
+    "Schema changes?" -> "REQUIRED SUB-SKILL: writing-plans" [label="no"];
+    "REQUIRED SUB-SKILL: sql-migration" -> "REQUIRED SUB-SKILL: writing-plans";
+    "REQUIRED SUB-SKILL: writing-plans" -> "HARD-GATE: plan approval";
     "HARD-GATE: plan approval" -> "Invoke java-tdd" [label="approved"];
-    "HARD-GATE: plan approval" -> "Invoke writing-plans" [label="edit requested"];
+    "HARD-GATE: plan approval" -> "REQUIRED SUB-SKILL: writing-plans" [label="edit requested"];
 }
 ```
 
@@ -98,8 +98,9 @@ If present → read baseline SHA.
 If run directory already exists (interrupted previous run) → ask:
 > "Found existing run `YYYY-MM-DD-<feature>`. Resume from where it stopped?
 > A) Resume (recommended)
-> B) Start a fresh run"
+> B) Start a fresh run (deletes the existing run directory)"
 → On resume: read existing artifacts, continue from first incomplete step.
+→ On fresh run: `rm -rf .jkit/YYYY-MM-DD-<feature>/`, then continue from Step 3.
 
 **Step 3: Compute diff**
 
@@ -113,7 +114,6 @@ Empty diff → stop: *"No spec changes since last implementation."*
 
 - Missing → generate it: read all `docs/domains/*/` specs, draft ≤1 page overview, ask targeted questions if unclear, write `docs/overview.md` with approval.
 - Present → read as background context.
-- New domain added in diff → after change-summary approval, ask: *"A new domain was added. Update docs/overview.md? A) Yes (recommended) B) No"*
 
 **Step 5: Order domains by dependency**
 
@@ -187,6 +187,8 @@ None / [description]
 (Omit section if no changed domain has test-scenarios.md)
 ```
 
+If a new domain was added in the diff: ask *"A new domain was added. Update docs/overview.md? A) Yes (recommended) B) No"* — do this now, before presenting the summary.
+
 Tell human: `"Written to .jkit/<run>/change-summary.md"`
 
 ```
@@ -208,12 +210,12 @@ Return here after sql-migration completes.
 
 **Step 11: Invoke writing-plans**
 
-Invoke `superpowers:writing-plans` with:
+**REQUIRED SUB-SKILL: invoke `superpowers:writing-plans`** with:
 - The full diff content
 - Contents of `docs/overview.md`
 - All clarification answers from Step 7
 
-Two overrides to pass to writing-plans:
+When running writing-plans, apply these adjustments:
 1. **Plan location:** save to `.jkit/<run>/plan.md` (not the superpowers default)
 2. **Plan header note:** replace the agentic-worker note with:
    > `For agentic workers: REQUIRED SUB-SKILL: Use java-tdd to implement this plan (TDD workflow with JaCoCo coverage analysis and integration test scaffolding).`

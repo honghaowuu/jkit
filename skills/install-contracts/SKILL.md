@@ -53,20 +53,24 @@ digraph install_contracts {
 }
 ```
 
-## Commands
+## Commands Reference
+
+Individual commands used by the flow above:
 
 ```bash
-# Register marketplace (first time — idempotent if already registered)
+# Register marketplace (idempotent)
 claude plugin marketplace add {marketplaceRepo}
 
-# Install and sync (delegates to shell script)
-bin/marketplace-sync.sh {marketplaceRepo} {marketplaceName}
+# Refresh index (called after registering)
+claude plugin marketplace update {marketplaceName}
 
 # Install one dependency
 claude plugin install {service-name} --scope local
 ```
 
 `--scope local` installs into the project's `.claude/settings.json`. Use `--scope user` only if the developer wants a contract globally available across all projects.
+
+Note: `bin/marketplace-sync.sh` combines the `marketplace update` call + catalog write in one step. Do not call it in addition to the explicit flow steps — it would duplicate the `update` call.
 
 ## `contracts.json` Format
 
@@ -82,14 +86,13 @@ When `contracts.json` already exists, `install-contracts` offers to append new e
 
 ## `.jkit/contract.json` Format
 
-Persists marketplace configuration. Created on first `install-contracts` run if not already present from `publish-contract`:
+Persists marketplace configuration. `install-contracts` writes only `marketplaceRepo` and `marketplaceName`. `contractRepo` is written only by `publish-contract` (publisher side):
 
 ```json
 {
-  "contractRepo": "git@github.com:{org}/{service-name}-contract.git",
   "marketplaceRepo": "git@github.com:{org}/marketplace.git",
   "marketplaceName": "{org}-marketplace"
 }
 ```
 
-Ask for `marketplaceRepo` and `marketplaceName` once, then persist. `contractRepo` is only relevant for the publisher side.
+Ask for these two fields once, then persist. If `publish-contract` has already run in this repo, `contractRepo` will also be present — leave it untouched.

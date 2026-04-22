@@ -71,6 +71,7 @@ digraph java_tdd {
     "TDD per gap" [shape=box];
     "More tasks?" [shape=diamond];
     "Invoke scenario-tdd" [shape=doublecircle];
+    "Final commit" [shape=doublecircle];
 
     "Load java-coding-standards" -> "Detect plan?";
     "Detect plan?" -> "Ask execution mode" [label="plan found"];
@@ -79,13 +80,14 @@ digraph java_tdd {
     "Verify JaCoCo" -> "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)";
     "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)" -> "mvn compile test-compile -q\n(max 3 retries)";
     "mvn compile test-compile -q\n(max 3 retries)" -> "More tasks?";
+    "More tasks?" -> "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)" [label="yes"];
+    "More tasks?" -> "mvn clean test\njacoco:report" [label="no"];
     "mvn clean test\njacoco:report" -> "jkit coverage\n--summary --min-score 1.0";
     "jkit coverage\n--summary --min-score 1.0" -> "Gaps above threshold?";
     "Gaps above threshold?" -> "TDD per gap" [label="yes"];
     "TDD per gap" -> "mvn clean test\njacoco:report";
-    "Gaps above threshold?" -> "More tasks?" [label="no"];
-    "More tasks?" -> "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)" [label="yes"];
-    "More tasks?" -> "mvn clean test\njacoco:report" [label="no"];
+    "Gaps above threshold?" -> "Invoke scenario-tdd" [label="no"];
+    "Invoke scenario-tdd" -> "Final commit";
 }
 ```
 
@@ -147,15 +149,15 @@ bin/jkit coverage target/site/jacoco/jacoco.xml --summary --min-score 1.0
 
 For each method with gaps above threshold (in priority order): invoke `superpowers:test-driven-development` targeting that specific uncovered path. Repeat until no methods above threshold.
 
-**Step 7: Resume (after interruption)**
+**Resume (after interruption — not a sequential step)**
 
 Determine progress from durable state: `git log --oneline` for `feat(impl):`/`fix(impl):` commits since run baseline, cross-referenced against plan tasks. Continue from first task with no corresponding commit — announce which task is being resumed, no prompt.
 
-**Step 8: Invoke scenario-tdd**
+**Step 6: Invoke scenario-tdd**
 
 **REQUIRED SUB-SKILL: invoke `scenario-tdd`** after all plan tasks pass unit coverage gates. Pass the current run directory and the scenario gap list from `change-summary.md`. scenario-tdd will call `java-verify` when done.
 
-**Step 9: Final commit**
+**Step 7: Final commit**
 
 Commit message MUST use one of:
 - `feat(impl): <description>` — new feature

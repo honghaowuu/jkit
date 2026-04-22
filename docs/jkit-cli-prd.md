@@ -24,6 +24,39 @@ reduces hallucination risk from large file reads.
 
 Subdomain detection and Javadoc scanning. Absorbs `codeskel`.
 
+#### `jkit skel <path>`
+
+Scans Java source under `<path>`, outputs a JSON array of class/method signatures with Javadoc metadata. Used by `publish-contract` (controller scan) and `scenario-gap` (test method discovery).
+
+**Output:**
+```json
+[
+  {
+    "class": "com.example.InvoiceController",
+    "annotation": "@RestController",
+    "methods": [
+      {
+        "name": "createInvoice",
+        "signature": "ResponseEntity<InvoiceResponse> createInvoice(InvoiceRequest request)",
+        "has_docstring": true,
+        "docstring_text": "Creates a new invoice for the given tenant."
+      },
+      {
+        "name": "getInvoice",
+        "signature": "ResponseEntity<InvoiceResponse> getInvoice(UUID id)",
+        "has_docstring": false
+      }
+    ]
+  }
+]
+```
+
+- `has_docstring`: true if the method has a Javadoc comment
+- `docstring_text`: only present when `has_docstring` is true
+- Methods with `has_docstring: false` or empty `docstring_text` fail the Javadoc quality check in `publish-contract`
+
+---
+
 #### `jkit skel domains <project_root>`
 
 Scans a Spring Boot project and detects logical subdomains by package structure
