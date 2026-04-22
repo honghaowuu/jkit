@@ -58,7 +58,9 @@ psql "$DATABASE_URL" -t -c \
 ```
 
 Fallback order:
-1. Env vars not in environment → read `.env/local.env` directly
+1. Env vars not in environment → read env files directly:
+   - Single-file layout: `.env/local.env`
+   - Directory layout: `.env/local/*.env` (read all, extract `DATABASE_URL`)
 2. DB unreachable → warn: *"DB not reachable — inferring schema changes from spec only. Review migration-preview.md carefully."* Continue with spec-only inference.
 
 **Step 2: Write migration-preview.md**

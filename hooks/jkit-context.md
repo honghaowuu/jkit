@@ -15,8 +15,12 @@ The `(impl):` scope triggers the post-commit hook to update `.jkit/spec-sync`. A
 ## Environment
 
 Single `application.yml` with `${ENV_VAR:default}`. No `application-{profile}.yml` profiles.
-- Local dev: `direnv` auto-loads `.env/local.env` on `cd`
-- Other envs: `JKIT_ENV=test direnv exec . <cmd>`
+
+`direnv` auto-loads env vars on `cd`. Two supported layouts (choose one per project):
+- Single file: `.env/local.env`, `.env/test.env`
+- Directory (split by concern): `.env/local/db.env`, `.env/local/kafka.env`, …
+
+Switch envs: `JKIT_ENV=test direnv exec . <cmd>`
 
 ## Skills — when to invoke
 
