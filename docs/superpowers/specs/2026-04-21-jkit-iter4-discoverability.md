@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-21
 **Status:** Draft
-**Iteration:** 4 of 4
+**Iteration:** 4 of 5
 **Depends on:** Iterations 1–3
 
 ---
