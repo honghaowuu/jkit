@@ -67,6 +67,11 @@ Claude session (per task)
 | `skills/install-contracts/SKILL.md` | Create | Register marketplace, install contract plugins, refresh catalog |
 | `skills/generate-feign/SKILL.md` | Create | Generate Feign client from an installed contract plugin |
 | `hooks/session-start` | Update | Inject marketplace catalog from `.jkit/marketplace-catalog.json` |
+| `bin/contract-push.sh` | Create | Git push pipeline for contract plugin repo (first-run + update) |
+| `bin/marketplace-publish.sh` | Create | Clone marketplace, upsert contract entry, push |
+| `bin/marketplace-sync.sh` | Create | Refresh Claude Code index + write `.jkit/marketplace-catalog.json` |
+
+**Note:** `bin/jkit` (Rust) is unchanged — it handles static analysis (`skel`). The three new scripts are shell scripts: git + JSON + subprocess calls do not warrant a compiled binary.
 
 ---
 
@@ -217,19 +222,19 @@ A local cache of the marketplace catalog written by both `publish-contract` and 
   "contracts": [
     {
       "name": "payment-service",
-      "description": "Use when your task involves payment processing, billing, or subscription data.",
-      "keywords": ["billing", "charge", "subscription", "invoice"]
+      "description": "Use when your task involves payment processing, billing, or subscription data."
     },
     {
       "name": "user-service",
-      "description": "Use when your task involves user profiles, authentication, or permissions.",
-      "keywords": ["user", "auth", "profile", "permission"]
+      "description": "Use when your task involves user profiles, authentication, or permissions."
     }
   ]
 }
 ```
 
-**How it stays current:** Written (not read) by `publish-contract` after pushing, and by `install-contracts` after updating the marketplace index. The hook never writes — only reads.
+`name` and `description` are sourced from `marketplace.json` entries — no need to clone individual contract repos. Keywords live in each contract's `SKILL.md` frontmatter and are loaded by Claude Code when the skill is invoked; they are not pre-cached here. Claude's semantic matching against `description` alone is sufficient for discovery.
+
+**How it stays current:** Written by `bin/marketplace-sync.sh`, called by both `publish-contract` and `install-contracts`. The hook never writes — only reads.
 
 ---
 
@@ -263,10 +268,8 @@ if .jkit/marketplace-catalog.json exists:
 ```
 ## Available Service Contracts
 
-payment-service — Payment processing, billing, subscriptions
-  keywords: billing, charge, subscription, invoice
-user-service    — User profiles, authentication
-  keywords: user, auth, profile, permission
+payment-service — Use when your task involves payment processing, billing, or subscription data.
+user-service    — Use when your task involves user profiles, authentication, or permissions.
 
 Installed in this project: payment-service
 Not yet installed: user-service
@@ -348,59 +351,17 @@ digraph publish_contract_v2 {
 
 ### Detailed Push Steps
 
-**Push contract plugin repo:**
-
-**First-run detection rule:** If `.jkit/contract-stage/{service-name}/.git/` does not exist, treat as first run. If `.git/` exists but `git -C .jkit/contract-stage/{service-name} remote get-url origin` does not match `contractRepo` in `.jkit/contract.json`, delete the directory entirely and treat as first run. Otherwise treat as subsequent run.
-
 **Remote repo prerequisite:** The GitHub repo at `contractRepo` must be created **empty** (no auto-generated README, license, or `.gitignore`). Before the first push, inform the human: *"The remote repo must be empty — no auto-generated README or license. If you initialized it with files on GitHub, please delete and recreate it without any initial files."*
 
 ```bash
-# First run: clean init
-rm -rf .jkit/contract-stage/{service-name}   # ensure clean state (also handles URL-mismatch case)
-mkdir -p .jkit/contract-stage/{service-name}
-cd .jkit/contract-stage/{service-name}
-git init
-git remote add origin {contractRepo}
-git add .
-git commit -m "chore: publish contract for {service-name}"
-git push -u origin main
-
-# Subsequent runs: update
-cd .jkit/contract-stage/{service-name}
-git pull origin main
-# (overwrite with newly generated files)
-git add .
-git commit -m "chore: update contract for {service-name}"
-git push origin main
+bin/contract-push.sh {service-name} {contractRepo}
+bin/marketplace-publish.sh {marketplaceRepo} {service-name} "{description}" {contractRepo}
+bin/marketplace-sync.sh {marketplaceRepo} {marketplaceName}
 ```
-
-**Update marketplace:**
-
-```bash
-rm -rf .jkit/marketplace-clone
-git clone {marketplaceRepo} .jkit/marketplace-clone
-# Read .jkit/marketplace-clone/.claude-plugin/marketplace.json
-# Append or update entry for {service-name} (never duplicate)
-# Write back
-cd .jkit/marketplace-clone
-git add .claude-plugin/marketplace.json
-git commit -m "chore: register/update {service-name} contract"
-git push origin main
-cd -
-rm -rf .jkit/marketplace-clone
-```
-
-**Refresh Claude Code index and write local catalog:**
-
-```bash
-claude plugin marketplace update {marketplaceName}
-```
-
-Then write `.jkit/marketplace-catalog.json` from the updated `marketplace.json` content — extract `name`, `description`, and `keywords` (read from each contract plugin's SKILL.md frontmatter if available, otherwise use marketplace entry `description` only).
 
 **Commit in service repo:**
 
-`.jkit/contract-stage/` and `.jkit/marketplace-clone/` are local working directories — not committed. Only `.jkit/contract.json`, `.jkit/marketplace-catalog.json`, and `.gitignore` are committed.
+`.jkit/contract-stage/` and `.jkit/marketplace-clone/` are local working directories managed by the scripts — not committed. Only `.jkit/contract.json`, `.jkit/marketplace-catalog.json`, and `.gitignore` are committed.
 
 ```bash
 # smart-doc.json if newly created this run
@@ -412,7 +373,7 @@ git add .jkit/contract.json .jkit/marketplace-catalog.json .gitignore
 git commit -m "chore(impl): publish service contract for {service-name}"
 ```
 
-This commit happens whether or not the push was confirmed at the HARD-GATE. The SSH URLs and catalog recorded in `.jkit/` are not sensitive and are worth preserving regardless.
+This commit happens whether or not the push was confirmed at the HARD-GATE. The SSH URLs and catalog are not sensitive and worth preserving regardless.
 
 ---
 
@@ -481,11 +442,9 @@ digraph install_contracts {
 # Register marketplace (first time — idempotent if already registered)
 claude plugin marketplace add {marketplaceRepo}
 
-# Refresh marketplace index
-claude plugin marketplace update {marketplaceName}
-
-# Install a contract plugin (project-scoped)
-claude plugin install {service-name} --scope local
+# Install and sync (delegates to shell script)
+bin/marketplace-sync.sh {marketplaceRepo} {marketplaceName}
+claude plugin install {service-name} --scope local   # one per dependency
 ```
 
 `--scope local` installs into the project's `.claude/settings.json`. Use `--scope user` only if the developer wants a contract globally available across all projects.
@@ -571,6 +530,132 @@ reference/contract.yaml            ← Level 4 — grepped for target paths
 
 ---
 
+## Shell Scripts
+
+Skills invoke these scripts with a single line. All git + JSON + subprocess operations live here, not in skill files.
+
+---
+
+### `bin/contract-push.sh {service-name} {contractRepo}`
+
+Pushes the generated contract plugin files to the GitHub contract repo.
+
+**First-run detection:** If `.jkit/contract-stage/{service-name}/.git/` does not exist, or the existing remote URL does not match `{contractRepo}`, delete the directory and re-init.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+SERVICE_NAME=$1
+CONTRACT_REPO=$2
+STAGE_DIR=".jkit/contract-stage/$SERVICE_NAME"
+
+# Detect first run or URL mismatch
+if [ ! -d "$STAGE_DIR/.git" ] || \
+   [ "$(git -C "$STAGE_DIR" remote get-url origin 2>/dev/null)" != "$CONTRACT_REPO" ]; then
+  rm -rf "$STAGE_DIR"
+  mkdir -p "$STAGE_DIR"
+  # (caller has already written SKILL.md, domains/, reference/ into STAGE_DIR)
+  git -C "$STAGE_DIR" init
+  git -C "$STAGE_DIR" remote add origin "$CONTRACT_REPO"
+  git -C "$STAGE_DIR" add .
+  git -C "$STAGE_DIR" commit -m "chore: publish contract for $SERVICE_NAME"
+  git -C "$STAGE_DIR" push -u origin main
+else
+  git -C "$STAGE_DIR" pull origin main
+  # (caller has already overwritten files in STAGE_DIR)
+  git -C "$STAGE_DIR" add .
+  git -C "$STAGE_DIR" commit -m "chore: update contract for $SERVICE_NAME"
+  git -C "$STAGE_DIR" push origin main
+fi
+```
+
+---
+
+### `bin/marketplace-publish.sh {marketplaceRepo} {service-name} "{description}" {contractRepo}`
+
+Clones the marketplace repo, upserts the contract entry, pushes, deletes clone.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+MARKETPLACE_REPO=$1
+SERVICE_NAME=$2
+DESCRIPTION=$3
+CONTRACT_REPO=$4
+CLONE_DIR=".jkit/marketplace-clone"
+MANIFEST="$CLONE_DIR/.claude-plugin/marketplace.json"
+
+rm -rf "$CLONE_DIR"
+git clone "$MARKETPLACE_REPO" "$CLONE_DIR"
+
+# Upsert entry using python3 (available in jkit environments)
+python3 - <<EOF
+import json, sys
+with open("$MANIFEST") as f:
+    data = json.load(f)
+entry = {
+    "name": "$SERVICE_NAME",
+    "description": "$DESCRIPTION",
+    "source": {"source": "url", "url": "$CONTRACT_REPO"}
+}
+plugins = data.get("plugins", [])
+idx = next((i for i, p in enumerate(plugins) if p["name"] == "$SERVICE_NAME"), None)
+if idx is not None:
+    plugins[idx] = entry
+else:
+    plugins.append(entry)
+data["plugins"] = plugins
+with open("$MANIFEST", "w") as f:
+    json.dump(data, f, indent=2)
+EOF
+
+git -C "$CLONE_DIR" add .claude-plugin/marketplace.json
+git -C "$CLONE_DIR" commit -m "chore: register/update $SERVICE_NAME contract"
+git -C "$CLONE_DIR" push origin main
+rm -rf "$CLONE_DIR"
+```
+
+---
+
+### `bin/marketplace-sync.sh {marketplaceRepo} {marketplaceName}`
+
+Refreshes Claude Code's marketplace index and writes `.jkit/marketplace-catalog.json`.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+MARKETPLACE_REPO=$1
+MARKETPLACE_NAME=$2
+CLONE_DIR=".jkit/marketplace-clone"
+MANIFEST="$CLONE_DIR/.claude-plugin/marketplace.json"
+
+claude plugin marketplace update "$MARKETPLACE_NAME"
+
+rm -rf "$CLONE_DIR"
+git clone "$MARKETPLACE_REPO" "$CLONE_DIR"
+
+python3 - <<EOF
+import json
+from datetime import datetime, timezone
+with open("$MANIFEST") as f:
+    data = json.load(f)
+catalog = {
+    "marketplaceName": "$MARKETPLACE_NAME",
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "contracts": [
+        {"name": p["name"], "description": p["description"]}
+        for p in data.get("plugins", [])
+    ]
+}
+with open(".jkit/marketplace-catalog.json", "w") as f:
+    json.dump(catalog, f, indent=2)
+EOF
+
+rm -rf "$CLONE_DIR"
+```
+
+---
+
 ## End-to-End Workflow
 
 **Publisher side (payment-service team, once):**
@@ -622,6 +707,7 @@ reference/contract.yaml            ← Level 4 — grepped for target paths
 ## Commit Convention
 
 ```
+feat: add bin/contract-push.sh, bin/marketplace-publish.sh, bin/marketplace-sync.sh
 feat: add install-contracts skill
 feat: add generate-feign skill
 feat(publish-contract): add GitHub push pipeline and marketplace registration
