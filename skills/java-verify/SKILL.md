@@ -54,10 +54,14 @@ Read `<plugin-root>/docs/java-coding-standards.md`. Apply all rules.
 
 Check `pom.xml` for Spotless, PMD, SpotBugs. If missing:
 > "Quality plugins not found.
-> A) Add from templates/pom-fragments/quality.xml (recommended)
+> A) Add quality plugins now (recommended)
 > B) Skip quality gate"
 
-On A: add fragment. Note in final commit message.
+On A:
+```bash
+bin/pom-add.sh quality        # jacoco if also missing: bin/pom-add.sh jacoco
+```
+Note in final commit message.
 
 **Step 1.5: Auto-fix formatting**
 
