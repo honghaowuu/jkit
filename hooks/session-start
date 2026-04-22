@@ -28,6 +28,38 @@ fi
 
 CONTEXT=$(cat "${PLUGIN_ROOT}/hooks/jkit-context.md")
 
+# 5. Append marketplace catalog if present (zero network calls — reads local cache only)
+if [ -f ".jkit/marketplace-catalog.json" ]; then
+  CATALOG_BLOCK=$(python3 - <<'PYEOF'
+import json, sys
+with open(".jkit/marketplace-catalog.json") as f:
+    data = json.load(f)
+contracts = data.get("contracts", [])
+if not contracts:
+    sys.exit(0)
+lines = ["\n## Available Service Contracts\n"]
+installed = set()
+try:
+    with open("contracts.json") as cf:
+        installed = set(json.load(cf).get("dependencies", []))
+except FileNotFoundError:
+    pass
+for c in contracts:
+    name = c["name"]
+    desc = c["description"]
+    lines.append(f"{name} — {desc}")
+installed_names = [c["name"] for c in contracts if c["name"] in installed]
+not_installed_names = [c["name"] for c in contracts if c["name"] not in installed]
+if installed_names:
+    lines.append(f"\nInstalled in this project: {', '.join(installed_names)}")
+if not_installed_names:
+    lines.append(f"Not yet installed: {', '.join(not_installed_names)}")
+print("\n".join(lines))
+PYEOF
+  )
+  CONTEXT="${CONTEXT}${CATALOG_BLOCK}"
+fi
+
 # Platform detection (follows superpowers pattern)
 if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
   # Cursor
