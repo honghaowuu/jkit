@@ -9,7 +9,7 @@
 
 ## Overview
 
-Extends `publish-contract` to publish service contracts as standard Claude Code plugin repos on GitHub and register them in an org-wide marketplace. Adds two new consumer-side skills: `install-contracts` for declaring and installing service dependencies, and `generate-feign` for generating Feign clients from installed contracts.
+Extends `publish-contract` to publish service contracts as standard Claude Code plugin repos on GitHub and register them in an org-wide marketplace. Adds two new consumer-side skills: `install-contracts` for declaring and installing service dependencies, and `generate-feign` for generating Feign clients from installed contracts. Extends the session-start hook to inject a marketplace catalog for ambient cross-service discovery.
 
 **Key architectural changes from Iteration 4:**
 
@@ -18,8 +18,9 @@ Extends `publish-contract` to publish service contracts as standard Claude Code 
 | Contract files live in `docs/contracts/{service}/` | Contract files live in a dedicated GitHub plugin repo |
 | `overview.md` hook-injected from local filesystem | `SKILL.md` invoked on demand via Claude Code plugin |
 | Ship step copies to `../microservices/` (fragile shared dir) | Push step commits to GitHub (versioned, team-owned) |
-| `ms-tool` CLI reads local `.microservice/` directory | Claude Code plugin system resolves contract skills |
+| `ms-tool` CLI reads local `.microservice/` directory | Claude Code native plugin commands manage contracts |
 | No consumer-side dependency management | `contracts.json` declares dependencies; `install-contracts` installs them |
+| No cross-service discovery | Session-start hook injects marketplace catalog for ambient awareness |
 
 ---
 
@@ -30,20 +31,28 @@ Extends `publish-contract` to publish service contracts as standard Claude Code 
 ```
 publish-contract skill
   ├── generates SKILL.md, domains/*.md, reference/contract.yaml
-  ├── reads .jkit/contract.json for SSH URLs (asks once, persists)
+  ├── reads .jkit/contract.json for SSH URLs + marketplace name (asks once, persists)
   ├── pushes → {service-name}-contract GitHub repo (contract plugin)
-  └── updates → marketplace GitHub repo (.claude-plugin/marketplace.json)
+  ├── updates → marketplace GitHub repo (.claude-plugin/marketplace.json)
+  ├── runs: claude plugin marketplace update {marketplaceName}
+  └── writes → .jkit/marketplace-catalog.json (session-start hook cache)
 ```
 
 **Consumer flow** (run once per upstream dependency added):
 
 ```
-jkit install-contracts
+install-contracts skill
+  ├── registers marketplace (first time): claude plugin marketplace add {marketplaceRepo}
   ├── reads contracts.json (dependency list)
-  ├── reads marketplace repo → resolves service name → GitHub URL
-  └── installs each contract as a Claude Code plugin
+  ├── refreshes index: claude plugin marketplace update {marketplaceName}
+  ├── installs each plugin: claude plugin install {service-name} --scope local
+  └── writes → .jkit/marketplace-catalog.json (session-start hook cache)
+
+session-start hook (every session, zero network calls)
+  └── reads .jkit/marketplace-catalog.json → injects available contracts into context
 
 Claude session (per task)
+  ├── sees injected catalog → spec-delta / any skill can suggest installs
   ├── invokes /{service-name} skill → navigates contract (4-level disclosure)
   └── invokes /generate-feign → produces Feign client from contract.yaml
 ```
@@ -54,9 +63,10 @@ Claude session (per task)
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `skills/publish-contract/SKILL.md` | Update | Add push pipeline; replace `overview.md` with `SKILL.md` generation |
-| `skills/install-contracts/SKILL.md` | Create | Declare and install upstream service contract plugins |
+| `skills/publish-contract/SKILL.md` | Update | Add push pipeline; replace `overview.md` with `SKILL.md` generation; refresh catalog |
+| `skills/install-contracts/SKILL.md` | Create | Register marketplace, install contract plugins, refresh catalog |
 | `skills/generate-feign/SKILL.md` | Create | Generate Feign client from an installed contract plugin |
+| `hooks/session-start` | Update | Inject marketplace catalog from `.jkit/marketplace-catalog.json` |
 
 ---
 
@@ -176,22 +186,50 @@ marketplace/
 }
 ```
 
-`publish-contract` appends or updates the entry for the current service. The marketplace repo SSH URL is stored once in `.jkit/contract.json`.
+`publish-contract` appends or updates the entry for the current service. If the entry already exists → update `description` and `url` in place. Never duplicate entries.
 
 ---
 
-## `.jkit/contract.json` — SSH URL Persistence
+## `.jkit/contract.json` — Config Persistence
 
 Lives in the microservice repo. Created on first `publish-contract` run; never shipped to the contract plugin repo.
 
 ```json
 {
   "contractRepo": "git@github.com:{org}/{service-name}-contract.git",
-  "marketplaceRepo": "git@github.com:{org}/marketplace.git"
+  "marketplaceRepo": "git@github.com:{org}/marketplace.git",
+  "marketplaceName": "{org}-marketplace"
 }
 ```
 
-Both SSH URLs are asked once (one at a time) and persisted. Subsequent `publish-contract` runs read from this file without prompting.
+All three fields are asked once (one at a time) and persisted. `marketplaceName` is the name field from `marketplace.json` — used for `claude plugin marketplace update {marketplaceName}`. Subsequent runs read from this file without prompting.
+
+---
+
+## `.jkit/marketplace-catalog.json` — Session-Start Hook Cache
+
+A local cache of the marketplace catalog written by both `publish-contract` and `install-contracts`. Read by the session-start hook at zero network cost. Committed to the service repo so all team members share the same known-contracts state.
+
+```json
+{
+  "marketplaceName": "{org}-marketplace",
+  "updatedAt": "2026-04-22T10:00:00Z",
+  "contracts": [
+    {
+      "name": "payment-service",
+      "description": "Use when your task involves payment processing, billing, or subscription data.",
+      "keywords": ["billing", "charge", "subscription", "invoice"]
+    },
+    {
+      "name": "user-service",
+      "description": "Use when your task involves user profiles, authentication, or permissions.",
+      "keywords": ["user", "auth", "profile", "permission"]
+    }
+  ]
+}
+```
+
+**How it stays current:** Written (not read) by `publish-contract` after pushing, and by `install-contracts` after updating the marketplace index. The hook never writes — only reads.
 
 ---
 
@@ -205,7 +243,40 @@ Lives at the **repo root** of a consumer microservice (alongside `pom.xml`). Dec
 }
 ```
 
-Created by `install-contracts` on first run if absent. When `contracts.json` already exists, `install-contracts` offers to append new entries before resolving.
+Created by `install-contracts` on first run if absent. When `contracts.json` already exists, `install-contracts` offers to append new entries before proceeding. Committed to the service repo — treat it like `pom.xml`.
+
+---
+
+## Session-Start Hook Extension
+
+The existing `hooks/session-start` is extended with one additional step at the end:
+
+```
+if .jkit/marketplace-catalog.json exists:
+    read catalog
+    read contracts.json (installed list, if present)
+    inject into session context
+```
+
+**Injected context format:**
+
+```
+## Available Service Contracts
+
+payment-service — Payment processing, billing, subscriptions
+  keywords: billing, charge, subscription, invoice
+user-service    — User profiles, authentication
+  keywords: user, auth, profile, permission
+
+Installed in this project: payment-service
+Not yet installed: user-service
+```
+
+**Design principles:**
+- **Zero network calls** — reads only from local `.jkit/marketplace-catalog.json`
+- **Always injected** — any skill can use this context, not just `spec-delta`
+- **Silent on missing catalog** — if `.jkit/marketplace-catalog.json` does not exist, skip without error
+- **`spec-delta` uses it for discovery** — scans the spec delta for domain terms, matches against injected keywords, suggests installs before planning
 
 ---
 
@@ -219,9 +290,9 @@ Steps 1–7 are unchanged (extract metadata, scan, Javadoc check, domain mapping
 
 Write `SKILL.md` instead of `overview.md`. `domains/*.md` generation is unchanged.
 
-Output location changes from `docs/contracts/{service-name}/` to a local staging directory `.jkit/contract-stage/{service-name}/` used as the working copy of the contract plugin repo. This directory is **not committed to the service repo** — it is the local git clone of the contract plugin. Add `.jkit/contract-stage/` to `.gitignore` on first run if not already present.
+Output location changes from `docs/contracts/{service-name}/` to a local staging directory `.jkit/contract-stage/{service-name}/` used as the working copy of the contract plugin repo. This directory is **not committed to the service repo** — add `.jkit/contract-stage/` to `.gitignore` on first run if not already present.
 
-**Steps 9–10 replace "Ship" and "Commit":**
+**Steps 9–11 replace "Ship" and "Commit":**
 
 ### Updated Checklist
 
@@ -240,10 +311,13 @@ Changed/new:
 - [ ] Write SKILL.md + domains/*.md to .jkit/contract-stage/{service-name}/
 - [ ] Read .jkit/contract.json — if missing, ask for contractRepo SSH URL, save
 - [ ] Read .jkit/contract.json — if missing, ask for marketplaceRepo SSH URL, save
+- [ ] Read .jkit/contract.json — if missing, ask for marketplaceName, save
 - [ ] HARD-GATE: show diff of changes to be pushed, confirm before any git push
 - [ ] Push contract plugin repo
-- [ ] Push marketplace update
-- [ ] Commit .jkit/contract.json in service repo (even if push was aborted at HARD-GATE — SSH URLs are not sensitive)
+- [ ] Clone marketplace, update marketplace.json, push, delete clone
+- [ ] Run: claude plugin marketplace update {marketplaceName}
+- [ ] Write .jkit/marketplace-catalog.json from updated marketplace.json
+- [ ] Commit .jkit/contract.json + .jkit/marketplace-catalog.json in service repo
 ```
 
 ### Updated Process Flow
@@ -252,29 +326,23 @@ Changed/new:
 digraph publish_contract_v2 {
     "Steps 1–7\n(unchanged)" [shape=box];
     "Write SKILL.md\n+ domains/*.md\nto .jkit/contract-stage/" [shape=box];
-    "Read .jkit/contract.json" [shape=box];
-    "contractRepo SSH URL known?" [shape=diamond];
-    "Ask for contractRepo SSH URL\nsave to .jkit/contract.json" [shape=box];
-    "marketplaceRepo SSH URL known?" [shape=diamond];
-    "Ask for marketplaceRepo SSH URL\nsave to .jkit/contract.json" [shape=box];
+    "Read .jkit/contract.json\n(ask for missing fields)" [shape=box];
     "HARD-GATE: show diff\nconfirm before push" [shape=box style=filled fillcolor=lightyellow];
     "Push contract plugin repo\n(init or update)" [shape=box];
-    "Clone marketplace repo\nupdate marketplace.json\npush" [shape=box];
-    "Commit .jkit/contract.json\nin service repo" [shape=doublecircle];
+    "Clone marketplace\nupdate marketplace.json\npush + delete clone" [shape=box];
+    "claude plugin marketplace\nupdate {marketplaceName}" [shape=box];
+    "Write .jkit/marketplace-catalog.json" [shape=box];
+    "Commit .jkit/contract.json\n+ .jkit/marketplace-catalog.json" [shape=doublecircle];
 
     "Steps 1–7\n(unchanged)" -> "Write SKILL.md\n+ domains/*.md\nto .jkit/contract-stage/";
-    "Write SKILL.md\n+ domains/*.md\nto .jkit/contract-stage/" -> "Read .jkit/contract.json";
-    "Read .jkit/contract.json" -> "contractRepo SSH URL known?";
-    "contractRepo SSH URL known?" -> "Ask for contractRepo SSH URL\nsave to .jkit/contract.json" [label="no"];
-    "contractRepo SSH URL known?" -> "marketplaceRepo SSH URL known?" [label="yes"];
-    "Ask for contractRepo SSH URL\nsave to .jkit/contract.json" -> "marketplaceRepo SSH URL known?";
-    "marketplaceRepo SSH URL known?" -> "Ask for marketplaceRepo SSH URL\nsave to .jkit/contract.json" [label="no"];
-    "marketplaceRepo SSH URL known?" -> "HARD-GATE: show diff\nconfirm before push" [label="yes"];
-    "Ask for marketplaceRepo SSH URL\nsave to .jkit/contract.json" -> "HARD-GATE: show diff\nconfirm before push";
+    "Write SKILL.md\n+ domains/*.md\nto .jkit/contract-stage/" -> "Read .jkit/contract.json\n(ask for missing fields)";
+    "Read .jkit/contract.json\n(ask for missing fields)" -> "HARD-GATE: show diff\nconfirm before push";
     "HARD-GATE: show diff\nconfirm before push" -> "Push contract plugin repo\n(init or update)" [label="confirmed"];
-    "HARD-GATE: show diff\nconfirm before push" -> "Commit .jkit/contract.json\nin service repo" [label="abort"];
-    "Push contract plugin repo\n(init or update)" -> "Clone marketplace repo\nupdate marketplace.json\npush";
-    "Clone marketplace repo\nupdate marketplace.json\npush" -> "Commit .jkit/contract.json\nin service repo";
+    "HARD-GATE: show diff\nconfirm before push" -> "Commit .jkit/contract.json\n+ .jkit/marketplace-catalog.json" [label="abort"];
+    "Push contract plugin repo\n(init or update)" -> "Clone marketplace\nupdate marketplace.json\npush + delete clone";
+    "Clone marketplace\nupdate marketplace.json\npush + delete clone" -> "claude plugin marketplace\nupdate {marketplaceName}";
+    "claude plugin marketplace\nupdate {marketplaceName}" -> "Write .jkit/marketplace-catalog.json";
+    "Write .jkit/marketplace-catalog.json" -> "Commit .jkit/contract.json\n+ .jkit/marketplace-catalog.json";
 }
 ```
 
@@ -308,38 +376,43 @@ git push origin main
 
 **Update marketplace:**
 
-Use `.jkit/marketplace-clone/` as a stable working directory (consistent with the rest of `.jkit/`):
-
 ```bash
-# Re-clone each time to avoid stale state
 rm -rf .jkit/marketplace-clone
 git clone {marketplaceRepo} .jkit/marketplace-clone
-cd .jkit/marketplace-clone
-# Read .claude-plugin/marketplace.json
-# Append or update entry for {service-name}
+# Read .jkit/marketplace-clone/.claude-plugin/marketplace.json
+# Append or update entry for {service-name} (never duplicate)
 # Write back
+cd .jkit/marketplace-clone
 git add .claude-plugin/marketplace.json
 git commit -m "chore: register/update {service-name} contract"
 git push origin main
+cd -
+rm -rf .jkit/marketplace-clone
 ```
 
-If the marketplace entry already exists → update `description` and `url` in place. Never duplicate entries. `.jkit/marketplace-clone/` is a temporary clone and must be in `.gitignore`.
+**Refresh Claude Code index and write local catalog:**
+
+```bash
+claude plugin marketplace update {marketplaceName}
+```
+
+Then write `.jkit/marketplace-catalog.json` from the updated `marketplace.json` content — extract `name`, `description`, and `keywords` (read from each contract plugin's SKILL.md frontmatter if available, otherwise use marketplace entry `description` only).
 
 **Commit in service repo:**
 
-`.jkit/contract-stage/` and `.jkit/marketplace-clone/` are local working directories — they are **not committed**. Only `.jkit/contract.json` (SSH URLs) and `.gitignore` are committed.
+`.jkit/contract-stage/` and `.jkit/marketplace-clone/` are local working directories — not committed. Only `.jkit/contract.json`, `.jkit/marketplace-catalog.json`, and `.gitignore` are committed.
 
 ```bash
 # smart-doc.json if newly created this run
 git add smart-doc.json pom.xml
 git commit -m "chore(impl): add smart-doc configuration"
 
-# SSH config + gitignore
-git add .jkit/contract.json .gitignore
+# SSH config + catalog + gitignore
+git add .jkit/contract.json .jkit/marketplace-catalog.json .gitignore
 git commit -m "chore(impl): publish service contract for {service-name}"
 ```
 
-This commit happens whether or not the push was confirmed at the HARD-GATE. The SSH URLs recorded in `.jkit/contract.json` are not sensitive and are worth preserving regardless.
+This commit happens whether or not the push was confirmed at the HARD-GATE. The SSH URLs and catalog recorded in `.jkit/` are not sensitive and are worth preserving regardless.
 
 ---
 
@@ -357,12 +430,14 @@ description: Use when setting up upstream service dependencies, or when adding a
 ### Checklist
 
 - [ ] Read `contracts.json` at repo root — if missing, ask which services to depend on, create it; if present, offer to append new entries before proceeding
-- [ ] Read `.jkit/contract.json` for `marketplaceRepo` SSH URL — if missing, ask once, save
-- [ ] Clone marketplace into `.jkit/marketplace-clone/`, read `.claude-plugin/marketplace.json`, then delete `.jkit/marketplace-clone/` (read-only use — no stable working copy needed)
-- [ ] For each dependency: resolve name → SSH URL → install plugin via Claude Code
+- [ ] Read `.jkit/contract.json` for `marketplaceRepo`, `marketplaceName` — if missing, ask once, save
+- [ ] Register marketplace if not already registered: `claude plugin marketplace add {marketplaceRepo}`
+- [ ] Refresh marketplace index: `claude plugin marketplace update {marketplaceName}`
+- [ ] Clone marketplace, read `.claude-plugin/marketplace.json`, write `.jkit/marketplace-catalog.json`, delete clone
+- [ ] For each dependency: `claude plugin install {service-name} --scope local`
 - [ ] Warn if any service name is not found in marketplace
 - [ ] Confirm installed plugins are available; note that a new Claude session may be required for plugins to activate
-- [ ] Commit `contracts.json` to the consumer repo (developer's responsibility — treat it like `pom.xml`)
+- [ ] Commit `contracts.json` + `.jkit/marketplace-catalog.json` + `.jkit/contract.json` to the consumer repo
 
 ### Process Flow
 
@@ -373,43 +448,47 @@ digraph install_contracts {
     "Ask which services to depend on\ncreate contracts.json" [shape=box];
     "Offer to append\nnew entries?" [shape=diamond];
     "Ask which services to add\nappend to contracts.json" [shape=box];
-    "Read marketplaceRepo SSH URL\nfrom .jkit/contract.json" [shape=box];
-    "SSH URL known?" [shape=diamond];
-    "Ask for marketplaceRepo SSH URL\nsave to .jkit/contract.json" [shape=box];
-    "Clone marketplace into\n.jkit/marketplace-clone/\nread marketplace.json\ndelete clone" [shape=box];
-    "For each dependency:\nresolve name → SSH URL" [shape=box];
-    "All resolved?" [shape=diamond];
-    "Warn: unresolved services\nlist them" [shape=box];
-    "Install each plugin\n(skip if already installed)" [shape=box];
-    "Confirm plugins available\nnote: new session may be needed\ncommit contracts.json" [shape=doublecircle];
+    "Read .jkit/contract.json\n(ask for missing fields)" [shape=box];
+    "claude plugin marketplace add\n{marketplaceRepo}" [shape=box];
+    "claude plugin marketplace update\n{marketplaceName}" [shape=box];
+    "Clone marketplace\nwrite .jkit/marketplace-catalog.json\ndelete clone" [shape=box];
+    "For each dependency:\nclaude plugin install {name}\n--scope local" [shape=box];
+    "All installed?" [shape=diamond];
+    "Warn: not found in marketplace\nlist them" [shape=box];
+    "Commit contracts.json\n+ catalog + .jkit/contract.json\nnote: new session may be needed" [shape=doublecircle];
 
     "Read contracts.json" -> "contracts.json exists?";
     "contracts.json exists?" -> "Ask which services to depend on\ncreate contracts.json" [label="no"];
     "contracts.json exists?" -> "Offer to append\nnew entries?" [label="yes"];
     "Offer to append\nnew entries?" -> "Ask which services to add\nappend to contracts.json" [label="yes"];
-    "Offer to append\nnew entries?" -> "Read marketplaceRepo SSH URL\nfrom .jkit/contract.json" [label="no"];
-    "Ask which services to add\nappend to contracts.json" -> "Read marketplaceRepo SSH URL\nfrom .jkit/contract.json";
-    "Ask which services to depend on\ncreate contracts.json" -> "Read marketplaceRepo SSH URL\nfrom .jkit/contract.json";
-    "Read marketplaceRepo SSH URL\nfrom .jkit/contract.json" -> "SSH URL known?";
-    "SSH URL known?" -> "Ask for marketplaceRepo SSH URL\nsave to .jkit/contract.json" [label="no"];
-    "SSH URL known?" -> "Clone marketplace into\n.jkit/marketplace-clone/\nread marketplace.json\ndelete clone" [label="yes"];
-    "Ask for marketplaceRepo SSH URL\nsave to .jkit/contract.json" -> "Clone marketplace into\n.jkit/marketplace-clone/\nread marketplace.json\ndelete clone";
-    "Clone marketplace into\n.jkit/marketplace-clone/\nread marketplace.json\ndelete clone" -> "For each dependency:\nresolve name → SSH URL";
-    "For each dependency:\nresolve name → SSH URL" -> "All resolved?";
-    "All resolved?" -> "Warn: unresolved services\nlist them" [label="partial"];
-    "All resolved?" -> "Install each plugin\n(skip if already installed)" [label="yes"];
-    "Warn: unresolved services\nlist them" -> "Install each plugin\n(skip if already installed)";
-    "Install each plugin\n(skip if already installed)" -> "Confirm plugins available\nnote: new session may be needed";
+    "Offer to append\nnew entries?" -> "Read .jkit/contract.json\n(ask for missing fields)" [label="no"];
+    "Ask which services to add\nappend to contracts.json" -> "Read .jkit/contract.json\n(ask for missing fields)";
+    "Ask which services to depend on\ncreate contracts.json" -> "Read .jkit/contract.json\n(ask for missing fields)";
+    "Read .jkit/contract.json\n(ask for missing fields)" -> "claude plugin marketplace add\n{marketplaceRepo}";
+    "claude plugin marketplace add\n{marketplaceRepo}" -> "claude plugin marketplace update\n{marketplaceName}";
+    "claude plugin marketplace update\n{marketplaceName}" -> "Clone marketplace\nwrite .jkit/marketplace-catalog.json\ndelete clone";
+    "Clone marketplace\nwrite .jkit/marketplace-catalog.json\ndelete clone" -> "For each dependency:\nclaude plugin install {name}\n--scope local";
+    "For each dependency:\nclaude plugin install {name}\n--scope local" -> "All installed?";
+    "All installed?" -> "Warn: not found in marketplace\nlist them" [label="partial"];
+    "All installed?" -> "Commit contracts.json\n+ catalog + .jkit/contract.json\nnote: new session may be needed" [label="yes"];
+    "Warn: not found in marketplace\nlist them" -> "Commit contracts.json\n+ catalog + .jkit/contract.json\nnote: new session may be needed";
 }
 ```
 
-### Install Command
+### Commands
 
 ```bash
-claude plugin install {SSH URL}
+# Register marketplace (first time — idempotent if already registered)
+claude plugin marketplace add {marketplaceRepo}
+
+# Refresh marketplace index
+claude plugin marketplace update {marketplaceName}
+
+# Install a contract plugin (project-scoped)
+claude plugin install {service-name} --scope local
 ```
 
-If a plugin for this service is already installed → skip with a note: *"`{service-name}` already installed — skipping."*
+`--scope local` installs into the project's `.claude/settings.json`. Use `--scope user` only if the developer wants a contract globally available across all projects.
 
 ---
 
@@ -499,9 +578,11 @@ reference/contract.yaml            ← Level 4 — grepped for target paths
 ```
 1. /publish-contract
    → generates SKILL.md, domains/, contract.yaml
-   → asks for contractRepo + marketplaceRepo SSH URLs (first time only)
+   → asks for contractRepo + marketplaceRepo SSH URLs + marketplaceName (first time only)
    → pushes payment-service-contract repo
-   → updates marketplace.json
+   → updates marketplace.json + runs: claude plugin marketplace update org-marketplace
+   → writes .jkit/marketplace-catalog.json
+   → commits .jkit/contract.json + .jkit/marketplace-catalog.json
 ```
 
 **Consumer side (order-service team, once per dependency):**
@@ -509,16 +590,28 @@ reference/contract.yaml            ← Level 4 — grepped for target paths
 ```
 2. /install-contracts
    → reads/creates contracts.json: ["payment-service"]
-   → resolves payment-service → git@github.com:org/payment-service-contract.git
-   → installs plugin
+   → runs: claude plugin marketplace add {marketplaceRepo}  (first time)
+   → runs: claude plugin marketplace update org-marketplace
+   → runs: claude plugin install payment-service --scope local
+   → writes .jkit/marketplace-catalog.json
+   → commits contracts.json + .jkit/marketplace-catalog.json
 
-3. /payment-service  (Claude navigates contract)
+3. Next session start (automatic, zero network)
+   → hook reads .jkit/marketplace-catalog.json
+   → injects: "payment-service available and installed / user-service available, not installed"
+
+4. /spec-delta  (planning a new feature)
+   → sees injected catalog, notices spec mentions "user authentication"
+   → suggests: "user-service is in the marketplace but not installed — install before planning?"
+   → developer confirms → /install-contracts adds user-service
+
+5. /payment-service  (Claude navigates contract mid-task)
    → Level 1: is this the right service? ✓
    → Level 2: which domain? → payments
    → Level 3: which API? → POST /api/v1/payments/charge
    → Level 4: grep contract.yaml for schema
 
-4. /generate-feign
+6. /generate-feign
    → reads contract.yaml for POST /api/v1/payments/charge
    → generates PaymentServiceClient.java in feign/
    → generates PaymentServiceClientTest.java
@@ -532,4 +625,5 @@ reference/contract.yaml            ← Level 4 — grepped for target paths
 feat: add install-contracts skill
 feat: add generate-feign skill
 feat(publish-contract): add GitHub push pipeline and marketplace registration
+feat(session-start): inject marketplace catalog for cross-service discovery
 ```
