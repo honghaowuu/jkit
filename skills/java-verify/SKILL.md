@@ -20,21 +20,23 @@ description: Use when verifying all quality gates and coverage after scenario-td
 ```dot
 digraph java_verify {
     "Load java-coding-standards" [shape=box];
-    "Ensure quality plugins\n(Checkstyle/PMD/SpotBugs)" [shape=box];
+    "Ensure quality plugins\n(Spotless/PMD/SpotBugs)" [shape=box];
+    "mvn spotless:apply\n(auto-fix formatting)" [shape=box];
     "mvn verify" [shape=box];
     "jkit coverage (merged jacoco)\njkit coverage --api" [shape=box];
     "Failures?" [shape=diamond];
-    "Fix inline" [shape=box];
+    "Fix inline\n(max 3 attempts)" [shape=box];
     "Gaps only?" [shape=diamond];
     "Ask: fix now or note for review" [shape=box];
     "superpowers:requesting-code-review" [shape=doublecircle];
 
-    "Load java-coding-standards" -> "Ensure quality plugins\n(Checkstyle/PMD/SpotBugs)";
-    "Ensure quality plugins\n(Checkstyle/PMD/SpotBugs)" -> "mvn verify";
+    "Load java-coding-standards" -> "Ensure quality plugins\n(Spotless/PMD/SpotBugs)";
+    "Ensure quality plugins\n(Spotless/PMD/SpotBugs)" -> "mvn spotless:apply\n(auto-fix formatting)";
+    "mvn spotless:apply\n(auto-fix formatting)" -> "mvn verify";
     "mvn verify" -> "jkit coverage (merged jacoco)\njkit coverage --api";
     "jkit coverage (merged jacoco)\njkit coverage --api" -> "Failures?";
-    "Failures?" -> "Fix inline" [label="yes"];
-    "Fix inline" -> "mvn verify";
+    "Failures?" -> "Fix inline\n(max 3 attempts)" [label="yes"];
+    "Fix inline\n(max 3 attempts)" -> "mvn verify";
     "Failures?" -> "Gaps only?" [label="no"];
     "Gaps only?" -> "Ask: fix now or note for review" [label="yes"];
     "Gaps only?" -> "superpowers:requesting-code-review" [label="no"];
@@ -50,12 +52,24 @@ Read `<plugin-root>/docs/java-coding-standards.md`. Apply all rules.
 
 **Step 1: Ensure quality plugins**
 
-Check `pom.xml` for Checkstyle, PMD, SpotBugs. If missing:
+Check `pom.xml` for Spotless, PMD, SpotBugs. If missing:
 > "Quality plugins not found.
 > A) Add from templates/pom-fragments/quality.xml (recommended)
 > B) Skip quality gate"
 
 On A: add fragment. Note in final commit message.
+
+**Step 1.5: Auto-fix formatting**
+
+```bash
+JKIT_ENV=test direnv exec . mvn spotless:apply
+```
+
+Applies google-java-format to all Java sources. Run this before `mvn verify` so the Spotless check phase always passes. Stage any changed files:
+
+```bash
+git add -u
+```
 
 **Step 2: Run mvn verify**
 
@@ -63,7 +77,7 @@ On A: add fragment. Note in final commit message.
 JKIT_ENV=test direnv exec . mvn verify
 ```
 
-Runs: unit tests → quality gates → integration tests (Failsafe) → JaCoCo dump + merge + report.
+Runs: unit tests → Spotless check + PMD + SpotBugs → integration tests (Failsafe) → JaCoCo dump + merge + report.
 
 Fix failures inline. Repeat until green. After 3 failed fix attempts: stop, report the root cause to the human, and do not continue.
 
