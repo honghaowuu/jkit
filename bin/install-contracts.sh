@@ -123,7 +123,9 @@ STAGE_FILES=()
 for _f in "$SETTINGS_JSON" "$CATALOG_JSON" "$CONTRACT_JSON"; do
   [ -f "$_f" ] && STAGE_FILES+=("$_f")
 done
-[ ${#STAGE_FILES[@]} -gt 0 ] && git add "${STAGE_FILES[@]}"
+if [ ${#STAGE_FILES[@]} -gt 0 ]; then
+  git add "${STAGE_FILES[@]}"
+fi
 git diff --cached --quiet || git commit -m "$COMMIT_MSG"
 
 echo ""
