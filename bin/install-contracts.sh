@@ -119,7 +119,11 @@ else
   COMMIT_MSG="chore: refresh marketplace catalog"
 fi
 
-git add --ignore-missing "$SETTINGS_JSON" "$CATALOG_JSON" "$CONTRACT_JSON"
+STAGE_FILES=()
+for _f in "$SETTINGS_JSON" "$CATALOG_JSON" "$CONTRACT_JSON"; do
+  [ -f "$_f" ] && STAGE_FILES+=("$_f")
+done
+[ ${#STAGE_FILES[@]} -gt 0 ] && git add "${STAGE_FILES[@]}"
 git diff --cached --quiet || git commit -m "$COMMIT_MSG"
 
 echo ""
