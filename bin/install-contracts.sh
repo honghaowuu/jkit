@@ -99,7 +99,7 @@ except Exception:
 INSTALLED=()
 if [ ${#SERVICES[@]} -gt 0 ]; then
   for SERVICE in "${SERVICES[@]}"; do
-    if [[ ! " $CATALOG_NAMES " =~ " $SERVICE " ]]; then
+    if [[ " $CATALOG_NAMES " != *" $SERVICE "* ]]; then
       echo "WARNING: '$SERVICE' not found in marketplace catalog — skipping" >&2
     else
       claude plugin install "$SERVICE" --scope project
