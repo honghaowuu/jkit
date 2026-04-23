@@ -12,9 +12,8 @@
     { "name": "scenario-gap",      "path": "skills/scenario-gap" },
     { "name": "scenario-tdd",      "path": "skills/scenario-tdd" },
     { "name": "java-verify",       "path": "skills/java-verify" },
-    { "name": "publish-contract",    "path": "skills/publish-contract" },
-    { "name": "install-contracts",   "path": "skills/install-contracts" },
-    { "name": "generate-feign",      "path": "skills/generate-feign" }
+    { "name": "publish-contract",  "path": "skills/publish-contract" },
+    { "name": "generate-feign",    "path": "skills/generate-feign" }
   ],
   "hooks": "hooks/hooks.json"
 }
