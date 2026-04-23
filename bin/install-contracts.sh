@@ -6,6 +6,8 @@ SETTINGS_JSON=".claude/settings.json"
 CATALOG_JSON=".jkit/marketplace-catalog.json"
 CLONE_DIR=".jkit/marketplace-clone"
 
+trap 'rm -rf "$CLONE_DIR"' EXIT
+
 # Resolve marketplaceRepo and marketplaceName from .jkit/contract.json
 MARKETPLACE_REPO=""
 MARKETPLACE_NAME=""
@@ -101,8 +103,9 @@ if [ ${#SERVICES[@]} -gt 0 ]; then
   for SERVICE in "${SERVICES[@]}"; do
     if [[ " $CATALOG_NAMES " != *" $SERVICE "* ]]; then
       echo "WARNING: '$SERVICE' not found in marketplace catalog — skipping" >&2
+    elif ! claude plugin install "$SERVICE" --scope project; then
+      echo "WARNING: failed to install '$SERVICE'" >&2
     else
-      claude plugin install "$SERVICE" --scope project
       INSTALLED+=("$SERVICE")
     fi
   done
@@ -110,14 +113,14 @@ fi
 
 # Commit
 if [ ${#INSTALLED[@]} -gt 0 ]; then
-  SERVICES_STR=$(IFS=", "; echo "${INSTALLED[*]}")
+  SERVICES_STR=$(printf "%s, " "${INSTALLED[@]}"); SERVICES_STR="${SERVICES_STR%, }"
   COMMIT_MSG="chore: install contracts [$SERVICES_STR]"
 else
   COMMIT_MSG="chore: refresh marketplace catalog"
 fi
 
-git add "$SETTINGS_JSON" "$CATALOG_JSON" "$CONTRACT_JSON"
-git commit -m "$COMMIT_MSG"
+git add --ignore-missing "$SETTINGS_JSON" "$CATALOG_JSON" "$CONTRACT_JSON"
+git diff --cached --quiet || git commit -m "$COMMIT_MSG"
 
 echo ""
 echo "Run 'claude /reload-plugins' to activate installed contracts in the current session"
