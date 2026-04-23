@@ -29,6 +29,6 @@ Switch envs: `JKIT_ENV=test direnv exec . <cmd>`
 - `/scenario-tdd` — implement integration test gaps from change-summary.md, one scenario at a time
 - `/java-verify` — run quality gates: mvn verify + merged coverage + API coverage + code review handoff
 - `/publish-contract` — generate and push the 4-level service contract for other teams
-- `/install-contracts` — add upstream service contract plugins as dependencies
+- `bin/install-contracts.sh` — add upstream service contract plugins as dependencies
 - `/generate-feign` — generate a Feign client from an installed contract plugin
 </jkit-project-context>

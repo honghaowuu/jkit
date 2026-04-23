@@ -22,7 +22,7 @@ description: Use when you need to generate a Feign client for an upstream micros
 digraph generate_feign {
     "Identify target service\nfrom task context" [shape=box];
     "Contract plugin installed?" [shape=diamond];
-    "Offer: run install-contracts now?" [shape=box];
+    "Offer: run bin/install-contracts.sh now?" [shape=box];
     "Invoke /{service-name} skill\nnavigate to right API" [shape=box];
     "SDK declared in SKILL.md?" [shape=diamond];
     "Offer: use SDK dependency\ninstead of generating" [shape=box];
@@ -35,7 +35,7 @@ digraph generate_feign {
     "Write integration test scaffold" [shape=doublecircle];
 
     "Identify target service\nfrom task context" -> "Contract plugin installed?";
-    "Contract plugin installed?" -> "Offer: run install-contracts now?" [label="no"];
+    "Contract plugin installed?" -> "Offer: run bin/install-contracts.sh now?" [label="no"];
     "Contract plugin installed?" -> "Invoke /{service-name} skill\nnavigate to right API" [label="yes"];
     "Invoke /{service-name} skill\nnavigate to right API" -> "SDK declared in SKILL.md?";
     "SDK declared in SKILL.md?" -> "Offer: use SDK dependency\ninstead of generating" [label="yes"];
@@ -62,10 +62,10 @@ Read the task context to determine which upstream service is needed. If ambiguou
 Check whether `/{service-name}` skill is available (the contract plugin is installed). If not:
 
 > "Contract plugin for `{service-name}` not found.
-> A) Run install-contracts now to add it (recommended)
+> A) Run `bin/install-contracts.sh` now to add it (recommended)
 > B) Abort"
 
-On A: **REQUIRED SUB-SKILL: invoke `install-contracts`**, then continue from Step 3.
+On A: run `bin/install-contracts.sh` in the terminal, then continue from Step 3.
 
 **Step 3: Navigate the contract**
 
