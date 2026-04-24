@@ -9,7 +9,7 @@ description: Use when publishing the service API contract for other microservice
 
 - [ ] Extract service metadata
 - [ ] Check for existing staged contract
-- [ ] Find and confirm controller path + jkit skel scan
+- [ ] Find and confirm controller path + codeskel scan
 - [ ] Javadoc quality check
 - [ ] Map controllers to domains + HARD-GATE approval
 - [ ] Structured interview (7 questions)
@@ -98,13 +98,20 @@ find src/main/java -type d -name api
 - Multiple found → list and ask the user to choose
 - None found → stop: *"Could not find an `api` package under `src/main/java/`. Please specify the controller path."*
 
-Scan with jkit skel:
+Scan with codeskel:
 
 ```bash
-bin/jkit skel "src/main/java/${GROUP_PATH}/${SERVICE}/api/"
+codeskel scan "src/main/java/${GROUP_PATH}/${SERVICE}/api/" --lang java
 ```
 
-From JSON output: identify classes with `@RestController` or `@Controller` annotation, and their public methods.
+This writes `.codeskel/cache.json` and returns `stats.to_comment` (N files). Iterate to find controllers:
+
+```bash
+# For i = 0 to stats.to_comment - 1:
+codeskel get .codeskel/cache.json --index <i>
+```
+
+For each file entry: identify controllers where `signatures[].annotations[].name` is `"RestController"` or `"Controller"`. Collect all method signatures from that entry.
 
 **Step 4: Javadoc quality check**
 
@@ -119,7 +126,14 @@ If ANY method has missing or insufficient Javadoc:
 > A) Improve Javadoc inline — I'll update the controller comments, then re-scan (recommended)
 > B) Proceed with current quality — I understand the contract will need manual editing"
 
-On A: read each controller, fill missing/thin Javadoc, re-run `jkit skel` to confirm. Do not use pre-improvement data after re-scan.
+On A: read each controller, fill missing/thin Javadoc, then re-scan and re-fetch:
+
+```bash
+codeskel rescan .codeskel/cache.json <controller_path>
+codeskel get .codeskel/cache.json --path <controller_path>
+```
+
+Do not use pre-improvement data after re-scan.
 
 **Step 5: Map controllers to domains**
 
