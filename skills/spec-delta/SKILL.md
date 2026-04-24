@@ -9,8 +9,10 @@ description: Use when there are pending change files in docs/changes/pending/ th
 
 - [ ] Sync with remote
 - [ ] Scan docs/changes/pending/
+- [ ] Resume detection (if prior run exists)
 - [ ] Confirm scope of pending changes
 - [ ] Read change files
+- [ ] Validate change files
 - [ ] Infer affected domains
 - [ ] Ask clarification questions
 - [ ] Update formal docs (inline or per-domain subagent)
@@ -35,8 +37,12 @@ digraph spec_delta {
     "Scan docs/changes/pending/" [shape=box];
     "pending/ empty?" [shape=diamond];
     "Stop: no pending changes" [shape=doublecircle];
+    "Resume detection" [shape=box];
     "Confirm scope (all or pick one)" [shape=box];
     "Read change files" [shape=box];
+    "Validate change files" [shape=box];
+    "Validation pass?" [shape=diamond];
+    "Stop: invalid change file" [shape=doublecircle];
     "Infer affected domains" [shape=box];
     "Ask clarification questions" [shape=box];
     "Update formal docs\n(inline or per-domain subagent)" [shape=box];
@@ -51,18 +57,24 @@ digraph spec_delta {
     "Create run directory + write .change-files" [shape=box];
     "Write change-summary.md" [shape=box];
     "HARD-GATE: change-summary approval" [shape=box style=filled fillcolor=lightyellow];
+    "Apply targeted edit" [shape=box];
     "Schema changes?" [shape=diamond];
     "REQUIRED SUB-SKILL: sql-migration" [shape=doublecircle];
     "REQUIRED SUB-SKILL: writing-plans" [shape=doublecircle];
     "HARD-GATE: plan approval" [shape=box style=filled fillcolor=lightyellow];
+    "Apply targeted plan edit" [shape=box];
     "Invoke java-tdd" [shape=doublecircle];
 
     "Sync with remote" -> "Scan docs/changes/pending/";
     "Scan docs/changes/pending/" -> "pending/ empty?";
     "pending/ empty?" -> "Stop: no pending changes" [label="yes"];
-    "pending/ empty?" -> "Confirm scope (all or pick one)" [label="no"];
+    "pending/ empty?" -> "Resume detection" [label="no"];
+    "Resume detection" -> "Confirm scope (all or pick one)";
     "Confirm scope (all or pick one)" -> "Read change files";
-    "Read change files" -> "Infer affected domains";
+    "Read change files" -> "Validate change files";
+    "Validate change files" -> "Validation pass?";
+    "Validation pass?" -> "Stop: invalid change file" [label="no"];
+    "Validation pass?" -> "Infer affected domains" [label="yes"];
     "Infer affected domains" -> "Ask clarification questions";
     "Ask clarification questions" -> "Update formal docs\n(inline or per-domain subagent)";
     "Update formal docs\n(inline or per-domain subagent)" -> "Run scenarios sync per domain";
@@ -78,20 +90,22 @@ digraph spec_delta {
     "Run scenarios gap per domain" -> "Create run directory + write .change-files";
     "Create run directory + write .change-files" -> "Write change-summary.md";
     "Write change-summary.md" -> "HARD-GATE: change-summary approval";
-    "HARD-GATE: change-summary approval" -> "Write change-summary.md" [label="edit requested"];
-    "HARD-GATE: change-summary approval" -> "Schema changes?" [label="approved"];
+    "HARD-GATE: change-summary approval" -> "Apply targeted edit" [label="B: edit"];
+    "Apply targeted edit" -> "HARD-GATE: change-summary approval";
+    "HARD-GATE: change-summary approval" -> "Schema changes?" [label="A: approved"];
     "Schema changes?" -> "REQUIRED SUB-SKILL: sql-migration" [label="yes"];
     "Schema changes?" -> "REQUIRED SUB-SKILL: writing-plans" [label="no"];
     "REQUIRED SUB-SKILL: sql-migration" -> "REQUIRED SUB-SKILL: writing-plans";
     "REQUIRED SUB-SKILL: writing-plans" -> "HARD-GATE: plan approval";
-    "HARD-GATE: plan approval" -> "Invoke java-tdd" [label="approved"];
-    "HARD-GATE: plan approval" -> "REQUIRED SUB-SKILL: writing-plans" [label="edit requested"];
+    "HARD-GATE: plan approval" -> "Invoke java-tdd" [label="A: approved"];
+    "HARD-GATE: plan approval" -> "Apply targeted plan edit" [label="B: edit"];
+    "Apply targeted plan edit" -> "HARD-GATE: plan approval";
 }
 ```
 
 ## Detailed Flow
 
-**Step 1: Sync with remote**
+### Step 1 — Sync with remote
 
 ```bash
 git fetch
@@ -106,16 +120,16 @@ git rev-list HEAD..@{u} --count
   > B) Continue without pulling
   > C) Abort"
 
-**Step 2: Scan docs/changes/pending/**
+### Step 2 — Scan docs/changes/pending/
 
 ```bash
 ls docs/changes/pending/*.md 2>/dev/null
 ```
 
 - No files → stop: *"No pending changes in docs/changes/pending/."*
-- Files found → continue to Step 2b.
+- Files found → continue.
 
-**Step 2b: Resume detection**
+### Step 3 — Resume detection
 
 If a run directory already exists under `.jkit/` (interrupted previous run):
 
@@ -123,10 +137,16 @@ If a run directory already exists under `.jkit/` (interrupted previous run):
 > A) Resume (recommended)
 > B) Start a fresh run (deletes the existing run directory)"
 
-On resume: read existing artifacts, continue from first incomplete step (check which of `change-summary.md`, `plan.md` already exist).
-On fresh: `rm -rf .jkit/YYYY-MM-DD-<feature>/`, then continue from Step 3.
+**On resume:** read `.change-files` and compare against current `docs/changes/pending/`. If new files have landed since the run started, ask:
+> "New pending files since this run started: <list>. Include them or defer to the next run?
+> A) Defer — resume the original scope (recommended)
+> B) Include — restart from Step 4 with the expanded scope"
 
-**Step 3: Confirm scope of pending changes**
+Then continue from the first incomplete step (check which of `change-summary.md`, `plan.md` already exist).
+
+**On fresh:** `rm -rf .jkit/YYYY-MM-DD-<feature>/`, then continue to Step 4.
+
+### Step 4 — Confirm scope
 
 List the files found in `docs/changes/pending/`. If more than one:
 
@@ -139,15 +159,27 @@ List the files found in `docs/changes/pending/`. If more than one:
 
 On B: show numbered list, ask which one.
 
-**Step 4: Read change files**
+### Step 5 — Read change files
 
 Read the full content of each selected change file. No diffing required.
 
-**Step 5: Infer affected domains**
+### Step 6 — Validate change files
 
-Check frontmatter `domain:` field in each change file. If present, use it directly.
+Before any writes, validate each selected change file:
 
-If absent, infer the domain from the description text — look for explicit domain names, entity names, or endpoint paths that match existing `docs/domains/<name>/` directories.
+- **Non-empty body.** Body below the frontmatter must contain at least one non-whitespace paragraph.
+- **Domain existence.** If frontmatter sets `domain: <name>`, verify `docs/domains/<name>/` exists. Missing `domain:` is allowed (Step 7 will infer).
+
+On failure, stop before any edits:
+> *"Change file `<path>` failed validation: <reason>. Fix the file and re-run spec-delta."*
+
+Do not attempt to repair change files automatically — they are human input.
+
+### Step 7 — Infer affected domains
+
+For each change file, check frontmatter `domain:` — use it directly if set.
+
+If absent, infer from the description text — look for explicit domain names, entity names, or endpoint paths that match existing `docs/domains/<name>/` directories.
 
 If ambiguous:
 > "Which domain does this change belong to?
@@ -155,7 +187,7 @@ If ambiguous:
 > B) payment
 > C) Other — I'll describe it"
 
-**Step 6: Ask clarification questions**
+### Step 8 — Clarification questions
 
 Batch all questions into a single numbered prompt. Do not ask one at a time. Format:
 
@@ -169,94 +201,81 @@ Batch all questions into a single numbered prompt. Do not ask one at a time. For
 > **Q2.** <question>
 >   A) ..."
 
-Each question:
-- 2–3 labeled options (A, B, C)
-- Exactly one marked `(recommended)`
+Each question: 2–3 labeled options (A, B, C), exactly one marked `(recommended)`.
 
-**Only ask if all three skip-criteria fail:**
-1. The change description is **genuinely ambiguous** — multiple reasonable implementations exist.
-2. **No default exists** from the domain's existing conventions (inspect `docs/domains/<domain>/` before asking).
-3. The question is about **semantic intent**, not implementation detail (don't ask how to name an internal method, a column type where the spec is explicit, or which Java package to use).
+**Only ask if ALL three criteria hold.** Otherwise pick the sensible default, record it in Step 13's Assumptions, and proceed.
 
-If all three pass, ask. Otherwise pick the sensible default and proceed — document the assumption in the change-summary later.
+| Criterion | Ask if |
+|---|---|
+| Ambiguous | Multiple reasonable implementations exist |
+| No default | Domain conventions (`docs/domains/<domain>/`) don't resolve it |
+| Semantic intent | About behavior (transactional vs best-effort, sync vs async, nullable) — **not** internal naming, typing, or package placement |
 
-Examples of genuine ambiguities that pass the filter: transactional vs. best-effort semantics, sync vs. async behavior, whether a new entity gets its own table or extends an existing one, whether a new field is nullable.
+If zero questions survive filtering, skip this step.
 
-If there are zero questions after filtering, skip this step entirely and proceed to Step 7.
+### Step 9 — Update formal docs
 
-**Step 7: Update formal docs**
+Three spec files per affected domain, updated in order so each can reference the previous:
 
-For each affected domain, update the three spec files in this order:
+1. `docs/domains/<domain>/domain-model.md` — entities, fields, relationships
+2. `docs/domains/<domain>/api-implement-logic.md` — service methods, business rules
+3. `docs/domains/<domain>/api-spec.yaml` — endpoints, request/response schemas
 
-1. `docs/domains/<domain>/domain-model.md` — add new entities, fields, or relationships
-2. `docs/domains/<domain>/api-implement-logic.md` — add new service methods, business rules
-3. `docs/domains/<domain>/api-spec.yaml` — add new endpoints, request/response schemas
+#### Step 9.1 — Edit the three files
 
-Update model → logic → spec so each file can reference the previous.
+**1 affected domain → Inline.** Read each file, apply edits via the Edit tool.
 
-### Execution mode — choose based on domain count
+**2+ affected domains → Per-domain subagent.** Dispatch one `general-purpose` subagent per domain in parallel (single message, multiple Agent tool calls). Use `./reviewer-prompts/update-domain.md` as the prompt template, filled with:
 
-**1 affected domain → Inline.** Read each file, apply edits via the Edit tool. No subagent overhead.
+- Full content of every change file processed in this run
+- All Step 8 clarification Q/A pairs (or "none" if Step 8 was skipped)
+- Any silent defaults recorded during Step 8 filtering
+- The target domain name
 
-**2+ affected domains → Per-domain subagent.** Dispatch one `general-purpose` subagent per domain in parallel (single message, multiple Agent tool calls). Each subagent receives:
+If a subagent reports `BLOCKED` or asks a question, fall back to inline for that domain.
 
-- The change file content (full)
-- All clarification answers from Step 6 (or "none" if Step 6 was skipped)
-- The domain name and the three file paths it must update
-- Explicit instructions: "Update these three files in the model→logic→spec order. Only edit sections related to the change. Do not touch unrelated content. Do not create new files. Do not run tests or other tools. Report 'done' when all three are saved."
+#### Step 9.2 — Sync test-scenarios.yaml
 
-Subagents must not request clarifications — any ambiguity was resolved in Step 6. If a subagent reports `BLOCKED` or asks a question, fall back to inline for that domain.
-
-### After edits (both modes)
-
-Write all files before proceeding. Do not prompt the human yet — the human review happens in Step 7c, after doc-compliance review and the `scenarios sync` pass.
-
-**Step 7b: Sync test-scenarios.yaml**
-
-For each affected domain, run:
+For each affected domain:
 
 ```bash
 scenarios sync <domain>
 ```
 
-This parses the current `docs/domains/<domain>/api-spec.yaml`, derives the required scenario set, and appends any missing entries to `docs/domains/<domain>/test-scenarios.yaml`. Append-only and idempotent — existing entries are never modified or reordered. Derivation rules live in `docs/scenarios-prd.md`; do not replicate them here.
+Parses the current `docs/domains/<domain>/api-spec.yaml`, derives the required scenario set, and appends any missing entries to `docs/domains/<domain>/test-scenarios.yaml`. Append-only and idempotent. Derivation rules live in `docs/scenarios-prd.md`; do not replicate them here.
 
-After running `scenarios sync` for all affected domains, proceed to Step 7c before asking the human.
+**On non-zero exit:** stop and surface stderr. Do not proceed to Step 9.3 — an unsynced yaml invalidates downstream gap detection.
 
-**Step 7c: Doc compliance review (subagent)**
+#### Step 9.3 — Doc compliance review
 
-Dispatch a `general-purpose` subagent using `./reviewer-prompts/doc-compliance.md`. Fill the template with:
-- Full content of every change file processed in this run
-- Verbatim Step 6 Q/A pairs (or "None — Step 6 skipped")
-- Any silent defaults recorded during Step 6 filtering
+Dispatch a `general-purpose` subagent using `./reviewer-prompts/doc-compliance.md`. Fill with:
+- Full content of every change file
+- Verbatim Step 8 Q/A pairs (or "None — Step 8 skipped")
+- Any silent defaults recorded during Step 8 filtering
 - Affected domain list and execution mode (inline vs. per-domain subagent)
 
-Reviewer output is one of:
+Reviewer output:
 
-- **✅ Compliant** → proceed to the human review prompt below.
+- **✅ Compliant** → proceed to Step 9.4.
 - **❌ Issues: [...]** → main thread fixes the listed issues directly (do not re-dispatch the updater subagent — targeted fixes don't need fresh context), then re-dispatch the reviewer with the same inputs.
 
-Loop cap: 3 reviewer iterations. If the reviewer is still unhappy on the 4th pass, stop the loop and escalate to the human, surfacing the reviewer's remaining notes alongside the diff. The human decides whether to proceed.
+Loop cap: 3 reviewer iterations. If still unhappy on the 4th pass, stop and escalate to the human with the reviewer's remaining notes.
 
-### Human review
-
-Once the reviewer returns ✅ (or the loop cap forces escalation):
+#### Step 9.4 — Human review
 
 > "Formal docs updated. Review with `git diff -- docs/domains/*/`. Ready to continue?"
 
-If the human requests a change, fix it in the main thread (no reviewer re-run — the human is the final arbiter). Wait for confirmation before proceeding to schema analysis.
+If the human requests a change, fix it in the main thread (no reviewer re-run — the human is the final arbiter). Wait for confirmation before proceeding.
 
-**Step 8: Schema analysis**
-
-After formal docs are approved, run:
+### Step 10 — Schema analysis
 
 ```bash
 git diff -- docs/domains/*/
 ```
 
-This produces a precise diff of only what was just updated in Step 7. Read this diff and reason about whether it implies database schema changes — new tables, new or renamed columns, FK changes, new indexes, dropped columns. Use domain understanding, not keyword scanning.
+A precise diff of what Step 9 just changed. Read and reason about whether it implies database schema changes — new tables, new or renamed columns, FK changes, new indexes, dropped columns. Use domain understanding, not keyword scanning.
 
-**Step 9: Scenario gap detection**
+### Step 11 — Scenario gap detection
 
 For each affected domain that has `docs/domains/<domain>/test-scenarios.yaml`:
 
@@ -264,11 +283,13 @@ For each affected domain that has `docs/domains/<domain>/test-scenarios.yaml`:
 scenarios gap <domain>
 ```
 
-Read the JSON output (array of `{endpoint, id, description}` objects). Collect gaps across domains — written into change-summary.md in Step 11. If output is `[]` for all domains, omit the Test Scenario Gaps section entirely.
+Read the JSON output (array of `{endpoint, id, description}` objects). Collect gap counts across domains for the Step 13 summary line. If output is `[]` for all domains, omit the Test Scenario Gaps section entirely.
+
+**On non-zero exit:** stop and surface stderr — do not proceed to Step 12.
 
 Note: `scenarios gap` reports **all** unimplemented scenarios in the yaml, not just the ones added by this change's sync. Pre-existing gaps will appear — treat them as in-scope unfinished work for the human to decide about during change-summary approval.
 
-**Step 10: Create run directory + write .change-files**
+### Step 12 — Create run directory
 
 ```bash
 mkdir -p .jkit/YYYY-MM-DD-<feature>/
@@ -276,13 +297,20 @@ mkdir -p .jkit/YYYY-MM-DD-<feature>/
 
 `<feature>` = short slug from the most significant change (e.g., `billing-bulk-invoice`).
 
+**Tie-breaker:** if multiple changes are equally significant, concatenate the top two with `-and-` (e.g., `billing-bulk-invoice-and-payment-refund`). If three or more tie, ask the human:
+
+> "Multiple changes of similar scope. Pick a slug for this run:
+> A) <slug-1> (recommended)
+> B) <slug-2>
+> C) <slug-combined>"
+
 Write `.jkit/YYYY-MM-DD-<feature>/.change-files` — one basename per line for each change file processed in this run:
 
 ```
 2026-04-24-bulk-invoice.md
 ```
 
-**Step 11: Write change-summary.md**
+### Step 13 — Write change-summary.md
 
 Mechanical template-fill. Each section has a designated source — do not invent content beyond what those sources produce. Write `.jkit/<run>/change-summary.md` using this template:
 
@@ -290,7 +318,7 @@ Mechanical template-fill. Each section has a designated source — do not invent
 # Change Summary: <feature>
 
 **Date:** YYYY-MM-DD
-**Change files:** <comma-separated basenames from Step 4>
+**Change files:** <comma-separated basenames from Step 5>
 
 ## Domains Changed
 
@@ -306,21 +334,21 @@ Yes / No
 12 unimplemented across 2 domains — run `scenarios gap <domain>` for the list.
 
 ## Assumptions
-- <any default picked when a Step-6 question was skipped by the filter>
+- <any default picked when a Step 8 question was skipped by the filter>
 ```
 
-### Source mapping (where each section comes from)
+#### Source mapping
 
 | Section | Source | How to fill |
 |---|---|---|
 | **Date** | Today's date | `YYYY-MM-DD` |
-| **Change files** | `.change-files` written in Step 10 | Comma-join the basenames |
-| **Domains Changed** | Step 5 domain list + `git diff --stat -- docs/domains/*/` | One row per affected domain; Added/Modified/Removed taken from the diff entities (no prose) |
-| **Schema Change Required** | Step 8 reasoning output | `Yes` + one-line summary, or `No` |
-| **Test Scenario Gaps** | Step 9 JSON | Count total entries across domains plus the domain count; one-line format. Omit the whole section if every domain returned `[]` |
-| **Assumptions** | Defaults chosen in Step 6 skip-filter | Omit the section if no defaults were silently picked |
+| **Change files** | `.change-files` written in Step 12 | Comma-join the basenames |
+| **Domains Changed** | Step 7 domain list + `git diff --stat -- docs/domains/*/` | One row per affected domain; Added/Modified/Removed from diff entities (no prose) |
+| **Schema Change Required** | Step 10 reasoning | `Yes` + one-line summary, or `No` |
+| **Test Scenario Gaps** | Step 11 JSON | Count total entries across domains plus domain count; one-line format. Omit the section if every domain returned `[]` |
+| **Assumptions** | Defaults chosen in Step 8 filter | Omit if no defaults were silently picked |
 
-No "Cross-Domain Effects" section — if there is a cross-domain effect, it will already appear as multiple rows in **Domains Changed**. Prose descriptions of cross-domain coupling tend to be speculative; skip them.
+No "Cross-Domain Effects" section — cross-domain effects appear as multiple rows in **Domains Changed**. Prose descriptions of cross-domain coupling tend to be speculative; skip them.
 
 Do not add sections beyond the template. Do not paraphrase the change description — the raw change files are already in `.change-files` for reference.
 
@@ -331,33 +359,35 @@ A) Looks good (recommended)
 B) Edit — tell me what to change
 ```
 
+**On B: apply the edit in place** — do not re-derive untouched sections. Re-prompt after the targeted edit.
+
 <HARD-GATE>
 Do NOT invoke writing-plans or sql-migration until the human approves change-summary.md.
 </HARD-GATE>
 
-**Step 12: SQL migration handoff (if schema changes flagged)**
+### Step 14 — SQL migration handoff (if schema changes flagged)
 
 **REQUIRED SUB-SKILL: invoke `sql-migration`**, passing:
 - The run directory path: `.jkit/<run>/`
-- The inferred schema changes from Step 8
+- The inferred schema changes from Step 10
 
 Return here after sql-migration completes.
 
-**Step 13: Invoke writing-plans**
+### Step 15 — Invoke writing-plans
 
 **REQUIRED SUB-SKILL: invoke `superpowers:writing-plans`** with:
 - Full content of all selected change files
 - Contents of `docs/overview.md` (if present)
-- All clarification answers from Step 6
+- All Step 8 clarification answers
 - The approved formal doc updates
 
-When running writing-plans, apply these adjustments:
+Adjustments to writing-plans defaults:
 1. **Plan location:** save to `.jkit/<run>/plan.md` (not the superpowers default)
 2. **Plan header note:** replace the agentic-worker note with:
    > `For agentic workers: REQUIRED SUB-SKILL: Use java-tdd to implement this plan (TDD workflow with JaCoCo coverage analysis and integration test scaffolding).`
-3. **Skip the Execution Handoff prompt.** writing-plans' default ends by asking "Subagent-Driven or Inline Execution?" — do not ask that. spec-delta owns execution routing in Step 14. Return control to spec-delta immediately after the self-review pass completes.
+3. **Skip the Execution Handoff prompt.** writing-plans' default ends by asking "Subagent-Driven or Inline Execution?" — do not ask that. spec-delta owns execution routing in Step 16. Return control to spec-delta immediately after the self-review pass.
 
-**Step 14: Plan approval and handoff**
+### Step 16 — Plan approval and handoff
 
 Tell human: `"Plan written to .jkit/<run>/plan.md"`
 
@@ -365,6 +395,8 @@ Tell human: `"Plan written to .jkit/<run>/plan.md"`
 A) Looks good (recommended)
 B) Edit — tell me what to change
 ```
+
+**On B: apply the edit in place** — do not re-invoke writing-plans for untouched sections. Re-prompt after the targeted edit.
 
 <HARD-GATE>
 Do NOT invoke java-tdd until the human approves plan.md.
@@ -379,22 +411,20 @@ spec-delta watches `docs/changes/pending/` for input and updates `docs/domains/*
 ```
 .jkit/
   YYYY-MM-DD-<feature>/             ← one directory per spec-delta run
-    .change-files                   ← basenames of change files processed in this run
+    .change-files                   ← basenames of change files processed
     change-summary.md
     plan.md
-    migration-preview.md            ← written by sql-migration skill (if triggered)
-    migration/                      ← SQL files written by sql-migration skill (if triggered)
+    migration-preview.md            ← sql-migration output (if triggered)
+    migration/                      ← SQL files from sql-migration (if triggered)
 docs/
   overview.md                       ← ≤1 page, what this service does
   changes/
-    pending/                        ← human-written change description files (unimplemented)
-    done/                           ← implemented change files (moved by post-commit hook)
+    pending/                        ← unimplemented change files
+    done/                           ← moved here by post-commit hook
   domains/
-    billing/
-      api-spec.yaml                 ← OpenAPI v3 (AI-maintained)
-      api-implement-logic.md        ← (AI-maintained)
-      domain-model.md               ← (AI-maintained)
-      test-scenarios.yaml           ← scenario gap source (AI-maintained)
-    payment/
-      ...
+    billing/                        ← (other domains follow the same shape)
+      api-spec.yaml                 ← OpenAPI v3, AI-maintained
+      api-implement-logic.md        ← AI-maintained
+      domain-model.md               ← AI-maintained
+      test-scenarios.yaml           ← scenario gap source, AI-maintained
 ```
