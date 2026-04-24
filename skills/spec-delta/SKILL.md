@@ -61,7 +61,7 @@ digraph spec_delta {
     "Update formal docs inline" -> "Checkpoint: ready to continue?";
     "Checkpoint: ready to continue?" -> "git diff docs/domains/*/ → schema analysis" [label="yes"];
     "git diff docs/domains/*/ → schema analysis" -> "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.yaml)";
-    "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.md)" -> "Create run directory + write .change-files";
+    "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.yaml)" -> "Create run directory + write .change-files";
     "Create run directory + write .change-files" -> "Write change-summary.md";
     "Write change-summary.md" -> "HARD-GATE: change-summary approval";
     "HARD-GATE: change-summary approval" -> "Write change-summary.md" [label="edit requested"];
