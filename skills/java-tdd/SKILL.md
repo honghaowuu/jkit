@@ -144,13 +144,29 @@ mvn clean test jacoco:report
 If command fails or `target/site/jacoco/jacoco.xml` is absent: stop and ask the human to verify the JaCoCo plugin configuration.
 
 ```bash
-jacoco-filter target/site/jacoco/jacoco.xml --summary --min-score 1.0
+jacoco-filter target/site/jacoco/jacoco.xml --summary --min-score 1.0 --top-k 0
 ```
 
-Output shape: `{"summary": {"line_coverage_pct": ..., "lines_covered": ..., "lines_missed": ..., "by_class": [...]}, "methods": [...]}`.
-The gap list is `methods[]` sorted by score descending. Overall coverage is `summary.line_coverage_pct`.
+Output shape:
+```json
+{
+  "summary": {
+    "line_coverage_pct": 72.4,
+    "lines_covered": 842,
+    "lines_missed": 321,
+    "by_class": [{"class": "...", "source_file": "...", "line_coverage_pct": 45.0, "lines_covered": 9, "lines_missed": 11}]
+  },
+  "methods": [
+    {"class": "com.example.InvoiceService", "source_file": "InvoiceService.java", "method": "calculateDiscount", "score": 4.5, "missed_lines": [42, 43, 47]}
+  ]
+}
+```
 
-For each method with gaps above threshold (in priority order): invoke `superpowers:test-driven-development` targeting that specific uncovered path. Repeat until no methods above threshold.
+`methods[]` is sorted by score descending (highest priority first). `method` is the bare method name; `class` is the fully-qualified class name; `missed_lines` are the uncovered line numbers. `by_class` is sorted ascending by `line_coverage_pct` (worst-covered class first). Overall coverage is `summary.line_coverage_pct`.
+
+`--top-k 0` disables the default top-5 cap so all gaps above the score threshold are returned in one pass.
+
+For each entry in `methods[]` (in order): invoke `superpowers:test-driven-development` targeting that specific method and its `missed_lines`. Repeat (re-run the command) until `methods[]` is empty.
 
 **Resume (after interruption — not a sequential step)**
 
