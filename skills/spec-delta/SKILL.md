@@ -165,6 +165,42 @@ Then tell the human:
 
 If the human requests a change, fix it inline and ask again. Wait for confirmation before proceeding to schema analysis.
 
+**Step 7b: Sync test-scenarios.md**
+
+For each domain whose `api-spec.yaml` was just updated, derive scenario IDs from the endpoints that were added or modified in this change (not from the full spec — only the delta):
+
+For each changed endpoint, generate scenario IDs using this table:
+
+| Source in api-spec.yaml | Generated scenario ID |
+|---|---|
+| Always | `happy-path` |
+| `required` field in request body | `validation-<field>-missing` |
+| Response `400` or `422` | `validation-<description-slug>` |
+| Response `401` | `auth-missing-token` |
+| Response `403` | `auth-<description-slug>` |
+| Response `404` | `not-found` |
+| Response `409` | `business-<description-slug>` |
+
+`<description-slug>` = response description text kebab-cased (e.g., `"Duplicate idempotency key"` → `business-duplicate-idempotency-key`).
+
+Then merge into `docs/domains/<domain>/test-scenarios.md`:
+
+1. If the file does not exist → create it with all derived scenarios
+2. If it exists → read it, then for each changed endpoint:
+   - Heading absent → append heading + all derived scenarios
+   - Heading present → append only scenario IDs not already present under that heading
+3. Never delete, reorder, or modify existing rows
+
+Format matches the existing `test-scenarios.md` convention:
+
+~~~markdown
+## POST /invoices/bulk
+- happy-path: valid list of 3 → 201 + invoice IDs
+- validation-amount-missing: missing amount field → 400
+- auth-missing-token: missing token → 401
+- business-duplicate-idempotency-key: duplicate idempotency key → 409
+~~~
+
 **Step 8: Schema analysis**
 
 After formal docs are approved, run:
@@ -302,7 +338,7 @@ docs/
       api-spec.yaml                 ← OpenAPI v3 (AI-maintained)
       api-implement-logic.md        ← (AI-maintained)
       domain-model.md               ← (AI-maintained)
-      test-scenarios.md             ← scenario gap source (human-maintained)
+      test-scenarios.md             ← scenario gap source (AI + human-maintained)
     payment/
       ...
 ```
