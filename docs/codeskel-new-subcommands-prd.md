@@ -58,6 +58,11 @@ Options:
 - Does not infer message schemas or topic names
 - Does not generate configuration (Claude's responsibility)
 
+### Implementation Notes
+
+- Reuse `.codeskel/cache.json` if present; run `codeskel scan` first if not
+- Annotation and supertype detection reuses existing tree-sitter parsing — no raw regex
+
 ---
 
 ## `codeskel contract <project_root>`
@@ -100,6 +105,7 @@ Options:
 
 ### Implementation Notes
 
+- Reuse `.codeskel/cache.json` if present; run `codeskel scan` first if not
 - Endpoint path = class-level `@RequestMapping` value + method-level `@GetMapping`/`@PostMapping`/etc. value, concatenated
 - `service` field on consumed clients derived from `@FeignClient(name = "...")` or `value` attribute
 - Reuse `annotations[].value` from cached signatures — no raw source reads
@@ -153,6 +159,12 @@ Options:
 - Does not execute migrations
 - Does not connect to a live database
 - Does not infer business meaning of schema changes
+
+### Implementation Notes
+
+- For **Liquibase**: `applied` is determined by changesets whose `<changeSet>` entries have a recorded `<executed>` attribute or are referenced in a local `databasechangelog` export file if present at `<project_root>/databasechangelog.csv`. Without such a file, all changesets are treated as pending.
+- For **Flyway**: all `V*.sql` files found in the migration directory are listed under `applied` by filename; `pending` is empty unless a `flyway_schema_history.csv` snapshot is found at `<project_root>/flyway_schema_history.csv`, in which case files not in the snapshot are `pending`.
+- If no history file is found, the tool emits exit code 2 (partial success) and notes the limitation in stderr.
 
 ---
 
