@@ -106,7 +106,7 @@ Output shape:
 }
 ```
 
-`methods[]` is sorted by score descending. `method` is the bare method name; `class` is the fully-qualified class name; `missed_lines` are the uncovered line numbers. `by_class` is sorted ascending by `line_coverage_pct` (worst-covered class first). Overall coverage is `summary.line_coverage_pct`. `--top-k 0` disables the default top-5 cap.
+`methods[]` is sorted by score descending. `method` is the bare method name; `class` is the fully-qualified class name; `missed_lines` are the uncovered line numbers. `by_class` is sorted ascending by `line_coverage_pct` (worst-covered class first). Overall coverage is `summary.line_coverage_pct`. `--top-k 0` disables the default top-5 cap so all gaps above the score threshold are returned in one pass.
 
 > **Note:** API endpoint coverage (`codeskel api-coverage`) is not yet implemented. Endpoint gap analysis is skipped until that subcommand is available.
 
