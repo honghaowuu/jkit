@@ -154,17 +154,17 @@ Options:
 }
 ```
 
-### Non-Goals
-
-- Does not execute migrations
-- Does not connect to a live database
-- Does not infer business meaning of schema changes
-
 ### Implementation Notes
 
 - For **Liquibase**: `applied` is determined by changesets whose `<changeSet>` entries have a recorded `<executed>` attribute or are referenced in a local `databasechangelog` export file if present at `<project_root>/databasechangelog.csv`. Without such a file, all changesets are treated as pending.
 - For **Flyway**: all `V*.sql` files found in the migration directory are listed under `applied` by filename; `pending` is empty unless a `flyway_schema_history.csv` snapshot is found at `<project_root>/flyway_schema_history.csv`, in which case files not in the snapshot are `pending`.
 - If no history file is found, the tool emits exit code 2 (partial success) and notes the limitation in stderr.
+
+### Non-Goals
+
+- Does not execute migrations
+- Does not connect to a live database
+- Does not infer business meaning of schema changes
 
 ---
 
