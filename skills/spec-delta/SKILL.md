@@ -187,7 +187,7 @@ Then merge into `docs/domains/<domain>/test-scenarios.md`:
 2. If it exists → read it, then for each changed endpoint:
    - Heading (`## METHOD /path`) absent → append heading + all derived scenarios
    - Heading present → append only scenario IDs not already present under that heading
-3. Never delete, reorder, or modify existing rows
+3. Never delete or reorder existing rows — only append
 
 Format matches the existing `test-scenarios.md` convention:
 
@@ -340,7 +340,7 @@ docs/
       api-spec.yaml                 ← OpenAPI v3 (AI-maintained)
       api-implement-logic.md        ← (AI-maintained)
       domain-model.md               ← (AI-maintained)
-      test-scenarios.md             ← scenario gap source (AI + human-maintained)
+      test-scenarios.md             ← scenario gap source (AI-maintained)
     payment/
       ...
 ```

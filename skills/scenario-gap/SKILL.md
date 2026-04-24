@@ -10,7 +10,7 @@ description: Use when detecting unimplemented test scenarios for a domain that h
 - Domain name (e.g., `billing`)
 - Test source root: `src/test/java/`
 
-`test-scenarios.md` is generated and kept up to date by spec-delta (Step 7b) and may also be extended by humans. The missing-file guard in Step 1 handles domains where the file has not yet been created.
+`test-scenarios.md` is generated and kept up to date by spec-delta (Step 7b). The missing-file guard in Step 1 handles domains where the file has not yet been created.
 
 ## `test-scenarios.md` Format
 
