@@ -88,25 +88,12 @@ Fix failures inline. Repeat until green. After 3 failed fix attempts: stop, repo
 
 ```bash
 # Unit + integration combined (merged jacoco.xml)
-jacoco-filter target/site/jacoco/jacoco.xml --summary --min-score 1.0 --top-k 0
+jacoco-filter target/site/jacoco/jacoco.xml --summary --min-score 1.0
 ```
 
-Output shape:
-```json
-{
-  "summary": {
-    "line_coverage_pct": 72.4,
-    "lines_covered": 842,
-    "lines_missed": 321,
-    "by_class": [{"class": "...", "source_file": "...", "line_coverage_pct": 45.0, "lines_covered": 9, "lines_missed": 11}]
-  },
-  "methods": [
-    {"class": "com.example.InvoiceService", "source_file": "InvoiceService.java", "method": "calculateDiscount", "score": 4.5, "missed_lines": [42, 43, 47]}
-  ]
-}
-```
-
-`methods[]` is sorted by score descending. `method` is the bare method name; `class` is the fully-qualified class name; `missed_lines` are the uncovered line numbers. `by_class` is sorted ascending by `line_coverage_pct` (worst-covered class first). Overall coverage is `summary.line_coverage_pct`. `--top-k 0` disables the default top-5 cap so all gaps above the score threshold are returned in one pass.
+Output: `{"summary": {"line_coverage_pct": ..., "lines_covered": ..., "lines_missed": ..., "by_class": [...]}, "methods": [...]}`.
+Each `methods[]` entry: `{"class": "com.example.InvoiceService", "source_file": "InvoiceService.java", "method": "calculateDiscount", "score": 4.5, "missed_lines": [42, 43, 47]}`.
+`method` is the bare method name; `class` is the fully-qualified class name; `missed_lines` are the uncovered line numbers. `methods[]` is sorted by score descending. `by_class` is sorted ascending by `line_coverage_pct` (worst-covered class first). Overall coverage is `summary.line_coverage_pct`. Default output is capped at top-5 methods.
 
 > **Note:** API endpoint coverage (`codeskel api-coverage`) is not yet implemented. Endpoint gap analysis is skipped until that subcommand is available.
 
