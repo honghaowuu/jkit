@@ -104,7 +104,10 @@ Steps marked `(unchanged)` are identical to the current implementation.
    > "Updated `docs/domains/billing/api-spec.yaml`
    > A) Looks good (recommended)
    > B) Edit — tell me what to change"
-8. **Semantic schema change analysis** (unchanged — reads updated formal docs instead of diff)
+8. **Semantic schema change analysis** — run `git diff -- docs/domains/*/` after step 7
+   to get a precise diff of only what the AI changed in the formal docs. Use this diff
+   (not the full docs) as input to the schema analysis. Token-efficient and scoped exactly
+   to what changed in this run.
 9. **SQL migration sub-flow** (unchanged — triggered if schema changes detected)
 10. **Create run directory + write `change-summary.md`** (unchanged)
     — also write `.change-files` to the run directory: one change file basename per line
