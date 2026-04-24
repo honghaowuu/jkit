@@ -11,7 +11,6 @@ description: Use when verifying all quality gates and coverage after scenario-td
 - [ ] Ensure quality plugins
 - [ ] Run mvn verify
 - [ ] Check merged JaCoCo coverage
-- [ ] Check API endpoint coverage
 - [ ] Fix failures or note gaps
 - [ ] Invoke requesting-code-review
 
@@ -23,7 +22,7 @@ digraph java_verify {
     "Ensure quality plugins\n(Spotless/PMD/SpotBugs)" [shape=box];
     "mvn spotless:apply\n(auto-fix formatting)" [shape=box];
     "mvn verify" [shape=box];
-    "jkit coverage (merged jacoco)\njkit coverage --api" [shape=box];
+    "jacoco-filter (merged jacoco)" [shape=box];
     "Failures?" [shape=diamond];
     "Fix inline\n(max 3 attempts)" [shape=box];
     "Gaps only?" [shape=diamond];
@@ -33,8 +32,8 @@ digraph java_verify {
     "Load java-coding-standards" -> "Ensure quality plugins\n(Spotless/PMD/SpotBugs)";
     "Ensure quality plugins\n(Spotless/PMD/SpotBugs)" -> "mvn spotless:apply\n(auto-fix formatting)";
     "mvn spotless:apply\n(auto-fix formatting)" -> "mvn verify";
-    "mvn verify" -> "jkit coverage (merged jacoco)\njkit coverage --api";
-    "jkit coverage (merged jacoco)\njkit coverage --api" -> "Failures?";
+    "mvn verify" -> "jacoco-filter (merged jacoco)";
+    "jacoco-filter (merged jacoco)" -> "Failures?";
     "Failures?" -> "Fix inline\n(max 3 attempts)" [label="yes"];
     "Fix inline\n(max 3 attempts)" -> "mvn verify";
     "Failures?" -> "Gaps only?" [label="no"];
@@ -89,15 +88,31 @@ Fix failures inline. Repeat until green. After 3 failed fix attempts: stop, repo
 
 ```bash
 # Unit + integration combined (merged jacoco.xml)
-bin/jkit coverage target/site/jacoco/jacoco.xml --summary --min-score 1.0
-
-# API endpoint coverage: spec vs test source
-bin/jkit coverage --api docs/domains/ src/test/java/
+jacoco-filter target/site/jacoco/jacoco.xml --summary --min-score 1.0 --top-k 0
 ```
+
+Output shape:
+```json
+{
+  "summary": {
+    "line_coverage_pct": 72.4,
+    "lines_covered": 842,
+    "lines_missed": 321,
+    "by_class": [{"class": "...", "source_file": "...", "line_coverage_pct": 45.0, "lines_covered": 9, "lines_missed": 11}]
+  },
+  "methods": [
+    {"class": "com.example.InvoiceService", "source_file": "InvoiceService.java", "method": "calculateDiscount", "score": 4.5, "missed_lines": [42, 43, 47]}
+  ]
+}
+```
+
+`methods[]` is sorted by score descending. `method` is the bare method name; `class` is the fully-qualified class name; `missed_lines` are the uncovered line numbers. `by_class` is sorted ascending by `line_coverage_pct` (worst-covered class first). Overall coverage is `summary.line_coverage_pct`. `--top-k 0` disables the default top-5 cap.
+
+> **Note:** API endpoint coverage (`codeskel api-coverage`) is not yet implemented. Endpoint gap analysis is skipped until that subcommand is available.
 
 **Failures** (tests or quality): fix inline, re-run.
 
-**Gaps only** (coverage below threshold or untested endpoints): ask:
+**Gaps only** (coverage below threshold): ask:
 > "Coverage gaps found: [list].
 > A) Fix gaps now — run scenario-tdd / add unit tests (recommended)
 > B) Proceed to code review — I'll note the gaps"
