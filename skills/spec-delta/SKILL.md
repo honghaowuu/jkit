@@ -40,7 +40,7 @@ digraph spec_delta {
     "Update formal docs inline" [shape=box];
     "Checkpoint: ready to continue?" [shape=box style=filled fillcolor=lightyellow];
     "git diff docs/domains/*/ → schema analysis" [shape=box];
-    "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.md)" [shape=doublecircle];
+    "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.yaml)" [shape=doublecircle];
     "Create run directory + write .change-files" [shape=box];
     "Write change-summary.md" [shape=box];
     "HARD-GATE: change-summary approval" [shape=box style=filled fillcolor=lightyellow];
@@ -60,7 +60,7 @@ digraph spec_delta {
     "Ask clarification questions" -> "Update formal docs inline";
     "Update formal docs inline" -> "Checkpoint: ready to continue?";
     "Checkpoint: ready to continue?" -> "git diff docs/domains/*/ → schema analysis" [label="yes"];
-    "git diff docs/domains/*/ → schema analysis" -> "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.md)";
+    "git diff docs/domains/*/ → schema analysis" -> "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.yaml)";
     "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.md)" -> "Create run directory + write .change-files";
     "Create run directory + write .change-files" -> "Write change-summary.md";
     "Write change-summary.md" -> "HARD-GATE: change-summary approval";
@@ -280,7 +280,7 @@ None / [description]
 | billing | POST /invoices/bulk | happy-path: valid list of 3 → 201 |
 | billing | POST /invoices/bulk | validation-empty-list: empty list → 400 |
 
-(Omit Test Scenario Gaps section if no changed domain has test-scenarios.md)
+(Omit Test Scenario Gaps section if no changed domain has test-scenarios.yaml)
 ```
 
 Tell human: `"Written to .jkit/<run>/change-summary.md"`
