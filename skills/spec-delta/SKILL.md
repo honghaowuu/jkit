@@ -165,7 +165,7 @@ Then tell the human:
 
 If the human requests a change, fix it inline and ask again. Wait for confirmation before proceeding to schema analysis.
 
-**Step 7b: Sync test-scenarios.md**
+**Step 7b: Sync test-scenarios.yaml**
 
 For each endpoint added or modified in this change (only the delta, not the full spec), generate scenario IDs using this table:
 
@@ -181,25 +181,33 @@ For each endpoint added or modified in this change (only the delta, not the full
 
 `<description-slug>` = the response description text alone, kebab-cased — the category prefix (`business-`, `auth-`, `validation-`) comes from the table row, not the description (e.g., description `"Duplicate idempotency key"` + row prefix `business-` → `business-duplicate-idempotency-key`).
 
-Then merge into `docs/domains/<domain>/test-scenarios.md`:
+Then merge into `docs/domains/<domain>/test-scenarios.yaml`:
 
-1. If the file does not exist → create it with all derived scenarios
-2. If it exists → read it, then for each changed endpoint:
-   - Heading (`## METHOD /path`) absent → append heading + all derived scenarios
-   - Heading present → append only scenario IDs not already present under that heading
-3. Never delete or reorder existing rows — only append
+1. If the file does not exist → create it with all derived scenario entries
+2. If it exists → read it, collect all existing `id` values, then append new entries for IDs not already present
+3. Never delete or reorder existing entries — only append
 
-Format matches the existing `test-scenarios.md` convention:
+Format is a flat YAML list — one entry per scenario, append new blocks at end of file:
 
-~~~markdown
-## POST /invoices/bulk
-- happy-path: valid list of 3 → 201 + invoice IDs        ← always
-- validation-amount-missing: missing amount field → 400    ← required field "amount"
-- auth-missing-token: missing token → 401                  ← response 401
-- business-duplicate-idempotency-key: duplicate idempotency key → 409  ← response 409
+~~~yaml
+- endpoint: "POST /invoices/bulk"
+  id: happy-path
+  description: valid list of 3 → 201 + invoice IDs        # always
+
+- endpoint: "POST /invoices/bulk"
+  id: validation-amount-missing
+  description: missing amount field → 400                  # required field "amount"
+
+- endpoint: "POST /invoices/bulk"
+  id: auth-missing-token
+  description: missing token → 401                         # response 401
+
+- endpoint: "POST /invoices/bulk"
+  id: business-duplicate-idempotency-key
+  description: duplicate idempotency key → 409             # response 409
 ~~~
 
-After syncing `test-scenarios.md` for all changed domains, include the updated files in the same human review prompt from Step 7:
+After syncing `test-scenarios.yaml` for all changed domains, include the updated files in the same human review prompt from Step 7:
 
 > "Formal docs updated. Review with `git diff -- docs/domains/*/`. Ready to continue?"
 
@@ -215,9 +223,13 @@ This produces a precise diff of only what was just updated in Step 7. Read this 
 
 **Step 9: Scenario gap detection**
 
-For each changed domain that has `docs/domains/<domain>/test-scenarios.md`:
+For each changed domain that has `docs/domains/<domain>/test-scenarios.yaml`:
 
-**REQUIRED SUB-SKILL: invoke `scenario-gap`**, passing the domain name. Collect all gaps across domains — written into change-summary.md in Step 11.
+```bash
+scenario-gap <domain> --new
+```
+
+Read the JSON output (array of `{endpoint, id, description}` objects). Collect all gaps across domains — written into change-summary.md in Step 11. If output is `[]` for all domains, omit the Test Scenario Gaps section entirely.
 
 **Step 10: Create run directory + write .change-files**
 
@@ -340,7 +352,7 @@ docs/
       api-spec.yaml                 ← OpenAPI v3 (AI-maintained)
       api-implement-logic.md        ← (AI-maintained)
       domain-model.md               ← (AI-maintained)
-      test-scenarios.md             ← scenario gap source (AI-maintained)
+      test-scenarios.yaml           ← scenario gap source (AI-maintained)
     payment/
       ...
 ```
