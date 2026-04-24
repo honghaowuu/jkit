@@ -13,8 +13,8 @@ description: Use when there are pending change files in docs/changes/pending/ th
 - [ ] Read change files
 - [ ] Infer affected domains
 - [ ] Ask clarification questions
-- [ ] Dispatch subagent(s) for formal doc updates
-- [ ] Review formal doc updates (git diff)
+- [ ] Update formal docs inline
+- [ ] Human reviews (git reset escape hatch)
 - [ ] Schema analysis (git diff docs/domains/*/)
 - [ ] Invoke scenario-gap per changed domain
 - [ ] Create run directory + write .change-files
@@ -37,8 +37,8 @@ digraph spec_delta {
     "Read change files" [shape=box];
     "Infer affected domains" [shape=box];
     "Ask clarification questions" [shape=box];
-    "REQUIRED SUB-SKILL: dispatching-parallel-agents\n(one subagent per change file)" [shape=doublecircle];
-    "HARD-GATE: review formal doc updates (git diff)" [shape=box style=filled fillcolor=lightyellow];
+    "Update formal docs inline" [shape=box];
+    "Checkpoint: ready to continue?" [shape=box style=filled fillcolor=lightyellow];
     "git diff docs/domains/*/ → schema analysis" [shape=box];
     "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.md)" [shape=doublecircle];
     "Create run directory + write .change-files" [shape=box];
@@ -57,10 +57,9 @@ digraph spec_delta {
     "Confirm scope (all or pick one)" -> "Read change files";
     "Read change files" -> "Infer affected domains";
     "Infer affected domains" -> "Ask clarification questions";
-    "Ask clarification questions" -> "REQUIRED SUB-SKILL: dispatching-parallel-agents\n(one subagent per change file)";
-    "REQUIRED SUB-SKILL: dispatching-parallel-agents\n(one subagent per change file)" -> "HARD-GATE: review formal doc updates (git diff)";
-    "HARD-GATE: review formal doc updates (git diff)" -> "REQUIRED SUB-SKILL: dispatching-parallel-agents\n(one subagent per change file)" [label="edit requested"];
-    "HARD-GATE: review formal doc updates (git diff)" -> "git diff docs/domains/*/ → schema analysis" [label="approved"];
+    "Ask clarification questions" -> "Update formal docs inline";
+    "Update formal docs inline" -> "Checkpoint: ready to continue?";
+    "Checkpoint: ready to continue?" -> "git diff docs/domains/*/ → schema analysis" [label="yes"];
     "git diff docs/domains/*/ → schema analysis" -> "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.md)";
     "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.md)" -> "Create run directory + write .change-files";
     "Create run directory + write .change-files" -> "Write change-summary.md";
@@ -150,40 +149,25 @@ One at a time. Only for genuine ambiguities in the change description. Each ques
 
 Examples of genuine ambiguities: transactional vs. best-effort semantics, sync vs. async behavior, whether a new entity needs its own table or extends an existing one.
 
-**Step 7: Dispatch subagent(s) for formal doc updates**
+**Step 7: Update formal docs inline**
 
-**REQUIRED SUB-SKILL: invoke `superpowers:dispatching-parallel-agents`** — one subagent per selected change file.
+For each affected domain, update the three spec files to reflect the change description and clarification answers, in this order:
 
-Each subagent receives a self-contained prompt containing:
-- The full content of the change file it is responsible for
-- All clarification answers collected in Step 6
-- The paths to all `docs/domains/` directories that exist in the project
-- This instruction:
+1. `docs/domains/<domain>/domain-model.md` — add new entities, fields, or relationships
+2. `docs/domains/<domain>/api-implement-logic.md` — add new service methods, business rules
+3. `docs/domains/<domain>/api-spec.yaml` — add new endpoints, request/response schemas
 
-> "Read the change description and clarification answers. Identify all domains affected by this change. For each affected domain, update the three spec files in this order:
-> 1. `docs/domains/<domain>/domain-model.md` — add new entities, fields, or relationships
-> 2. `docs/domains/<domain>/api-implement-logic.md` — add new service methods, business rules
-> 3. `docs/domains/<domain>/api-spec.yaml` — add new endpoints, request/response schemas
->
-> Update in model → logic → spec order so each file can reference the previous. Write the files directly — do not commit. Report which files you updated when done."
+Update model → logic → spec so each file can reference the previous. Write all files before asking the human anything.
 
-After all subagents complete, run:
+Then tell the human:
 
-```bash
-git diff -- docs/domains/*/
-```
+> "Formal docs updated. Review with:
+> ```
+> git diff -- docs/domains/*/
+> ```
+> If anything looks wrong, run `git reset -- docs/domains/*/` and tell me what to change. Ready to continue?"
 
-Show the diff path list to the human and ask:
-
-> "Formal docs updated across N domain(s). Review the changes in docs/domains/.
-> A) Looks good (recommended)
-> B) Edit — tell me what to change"
-
-On B: apply the requested correction inline (small fix) or re-dispatch the subagent with amended instructions (larger rework).
-
-<HARD-GATE>
-Do NOT proceed to schema analysis until the human has approved the formal doc updates.
-</HARD-GATE>
+Wait for confirmation before proceeding to schema analysis.
 
 **Step 8: Schema analysis**
 
