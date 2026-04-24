@@ -14,6 +14,7 @@ description: Use when there are pending change files in docs/changes/pending/ th
 - [ ] Infer affected domains
 - [ ] Ask clarification questions
 - [ ] Update formal docs inline
+- [ ] Human reviews (git reset escape hatch)
 - [ ] Schema analysis (git diff docs/domains/*/)
 - [ ] Invoke scenario-gap per changed domain
 - [ ] Create run directory + write .change-files
@@ -37,6 +38,7 @@ digraph spec_delta {
     "Infer affected domains" [shape=box];
     "Ask clarification questions" [shape=box];
     "Update formal docs inline" [shape=box];
+    "Checkpoint: ready to continue?" [shape=box style=filled fillcolor=lightyellow];
     "git diff docs/domains/*/ → schema analysis" [shape=box];
     "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.md)" [shape=doublecircle];
     "Create run directory + write .change-files" [shape=box];
@@ -56,7 +58,8 @@ digraph spec_delta {
     "Read change files" -> "Infer affected domains";
     "Infer affected domains" -> "Ask clarification questions";
     "Ask clarification questions" -> "Update formal docs inline";
-    "Update formal docs inline" -> "git diff docs/domains/*/ → schema analysis";
+    "Update formal docs inline" -> "Checkpoint: ready to continue?";
+    "Checkpoint: ready to continue?" -> "git diff docs/domains/*/ → schema analysis" [label="yes"];
     "git diff docs/domains/*/ → schema analysis" -> "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.md)";
     "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.md)" -> "Create run directory + write .change-files";
     "Create run directory + write .change-files" -> "Write change-summary.md";
@@ -156,11 +159,11 @@ For each affected domain, update the three spec files to reflect the change desc
 
 Update model → logic → spec so each file can reference the previous. Write all files before asking the human anything.
 
-Then inform the human:
+Then tell the human:
 
-> "Formal docs updated. To undo: `git reset -- docs/domains/*/`"
+> "Formal docs updated. Review with `git diff -- docs/domains/*/`. Ready to continue?"
 
-Proceed immediately to schema analysis — no confirmation needed.
+If the human requests a change, fix it inline and ask again. Wait for confirmation before proceeding to schema analysis.
 
 **Step 8: Schema analysis**
 
