@@ -47,7 +47,7 @@ If `stats.total_files` is 0 (no files found) → all scenarios are gaps.
 Iterate over all files in the cache:
 
 ```bash
-# For i = 0 to stats.to_comment - 1:
+# For i = 0 to stats.total_files - 1:
 codeskel get .codeskel/cache.json --index <i>
 ```
 
