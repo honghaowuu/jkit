@@ -39,12 +39,19 @@ Read `docs/domains/<domain>/test-scenarios.md`. Extract all `{endpoint, scenario
 **Step 2: Scan existing test methods**
 
 ```bash
-bin/jkit skel src/test/java/<group-path>/<service>/<domain>/
+codeskel scan src/test/java/<group-path>/<service>/<domain>/ --lang java
 ```
 
-If no test class exists for the domain → all scenarios are gaps.
+If `stats.to_comment` is 0 (no files found) → all scenarios are gaps.
 
-From JSON output: collect all test method names.
+Iterate over all files in the cache:
+
+```bash
+# For i = 0 to stats.to_comment - 1:
+codeskel get .codeskel/cache.json --index <i>
+```
+
+From each file entry: collect all `name` values from `signatures[]` where `kind == "method"`.
 
 **Step 3: Match and diff**
 
