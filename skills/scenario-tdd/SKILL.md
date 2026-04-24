@@ -1,6 +1,6 @@
 ---
 name: scenario-tdd
-description: Use when implementing integration test scenarios identified as gaps by scenario-gap. Reads the gap list from change-summary.md and implements each via TDD.
+description: Use when implementing integration test scenarios identified as gaps for a spec-delta run.
 ---
 
 **Announcement:** At start: *"I'm using the scenario-tdd skill to implement integration test scenario gaps via TDD."*
@@ -31,7 +31,7 @@ No exceptions:
 
 - [ ] Load java-coding-standards
 - [ ] Detect Spring Boot version + prerequisites
-- [ ] Read scenario gaps from change-summary.md
+- [ ] Read affected domains + run `scenarios gap` per domain
 - [ ] TDD loop: per gap scenario
 - [ ] Invoke java-verify
 
@@ -41,7 +41,7 @@ No exceptions:
 digraph scenario_tdd {
     "Load java-coding-standards" [shape=box];
     "Detect SB version\n+ prerequisites" [shape=box];
-    "Read scenario gaps\nfrom change-summary.md" [shape=box];
+    "Read affected domains\n+ run scenarios gap" [shape=box];
     "Gaps to implement?" [shape=diamond];
     "Done → invoke java-verify" [shape=doublecircle];
     "Next gap scenario" [shape=box];
@@ -53,8 +53,8 @@ digraph scenario_tdd {
     "More gaps?" [shape=diamond];
 
     "Load java-coding-standards" -> "Detect SB version\n+ prerequisites";
-    "Detect SB version\n+ prerequisites" -> "Read scenario gaps\nfrom change-summary.md";
-    "Read scenario gaps\nfrom change-summary.md" -> "Gaps to implement?";
+    "Detect SB version\n+ prerequisites" -> "Read affected domains\n+ run scenarios gap";
+    "Read affected domains\n+ run scenarios gap" -> "Gaps to implement?";
     "Gaps to implement?" -> "Done → invoke java-verify" [label="none"];
     "Gaps to implement?" -> "Next gap scenario" [label="yes"];
     "Next gap scenario" -> "Show scenario to human\n(lightweight gate)";
@@ -94,11 +94,19 @@ Read `<parent><version>` from `pom.xml`.
 
 Check `docker-compose.test.yml` exists. If missing: copy from `templates/docker-compose.test.yml`.
 
-**Step 2: Read scenario gaps**
+**Step 2: Read affected domains + fetch gaps**
 
-Read the **Test Scenario Gaps** section from `.jkit/<run>/change-summary.md` (passed by java-tdd). Each row is a `{domain, endpoint, scenario_id, scenario_description}` tuple — the authoritative work list for this run.
+Read the `## Domains Changed` table from `.jkit/<run>/change-summary.md` (run directory passed by java-tdd). The first column lists the affected domains for this run.
 
-If the section is absent or empty → no scenario gaps detected; complete immediately, invoke `java-verify`.
+For each affected domain, run:
+
+```bash
+scenarios gap <domain>
+```
+
+Each command returns a JSON array of `{endpoint, id, description}` objects. Collect across domains to form the authoritative work list for this run — process gaps in domain order as listed in `## Domains Changed`.
+
+If every domain returns `[]` → no scenario gaps detected; complete immediately, invoke `java-verify`.
 
 **Step 3: TDD loop**
 
