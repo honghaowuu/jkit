@@ -354,9 +354,9 @@ On confirmed push:
 
 ```bash
 # Inform the human before first push: "The remote repo must be empty — no auto-generated README or license."
-bin/contract-push.sh {service-name} {contractRepo}
-bin/marketplace-publish.sh {marketplaceRepo} {service-name} "{description}" {contractRepo}
-bin/marketplace-sync.sh {marketplaceRepo} {marketplaceName}
+contract-push.sh {service-name} {contractRepo}
+marketplace-publish.sh {marketplaceRepo} {service-name} "{description}" {contractRepo}
+marketplace-sync.sh {marketplaceRepo} {marketplaceName}
 ```
 
 Commit in service repo. Use `chore(contract):` — not `chore(impl):` — so the post-commit hook does not advance `.jkit/spec-sync`.

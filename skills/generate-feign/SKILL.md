@@ -62,10 +62,10 @@ Read the task context to determine which upstream service is needed. If ambiguou
 Check whether `/{service-name}` skill is available (the contract plugin is installed). If not:
 
 > "Contract plugin for `{service-name}` not found.
-> A) Run `bin/install-contracts.sh` now to add it (recommended)
+> A) Run `install-contracts.sh` now to add it (recommended)
 > B) Abort"
 
-On A: run `bin/install-contracts.sh` in the terminal, then continue from Step 3.
+On A: run `install-contracts.sh` in the terminal, then continue from Step 3.
 
 **Step 3: Navigate the contract**
 
