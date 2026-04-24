@@ -42,7 +42,7 @@ Read `docs/domains/<domain>/test-scenarios.md`. Extract all `{endpoint, scenario
 codeskel scan src/test/java/<group-path>/<service>/<domain>/ --lang java
 ```
 
-If `stats.to_comment` is 0 (no files found) → all scenarios are gaps.
+If `stats.total_files` is 0 (no files found) → all scenarios are gaps.
 
 Iterate over all files in the cache:
 
@@ -51,7 +51,7 @@ Iterate over all files in the cache:
 codeskel get .codeskel/cache.json --index <i>
 ```
 
-From each file entry: collect all `name` values from `signatures[]` where `kind == "method"`.
+From each file entry: collect all `name` values (bare method name, e.g., `happyPath`) from `signatures[]` where `kind == "method"`.
 
 **Step 3: Match and diff**
 
