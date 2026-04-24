@@ -9,7 +9,6 @@ description: Use when there are pending change files in docs/changes/pending/ th
 
 - [ ] Sync with remote
 - [ ] Scan docs/changes/pending/
-- [ ] Handle legacy .jkit/spec-sync (if present)
 - [ ] Confirm scope of pending changes
 - [ ] Read change files
 - [ ] Infer affected domains
@@ -34,8 +33,6 @@ digraph spec_delta {
     "Scan docs/changes/pending/" [shape=box];
     "pending/ empty?" [shape=diamond];
     "Stop: no pending changes" [shape=doublecircle];
-    "Legacy .jkit/spec-sync exists?" [shape=diamond];
-    "Offer migration" [shape=box];
     "Confirm scope (all or pick one)" [shape=box];
     "Read change files" [shape=box];
     "Infer affected domains" [shape=box];
@@ -56,10 +53,7 @@ digraph spec_delta {
     "Sync with remote" -> "Scan docs/changes/pending/";
     "Scan docs/changes/pending/" -> "pending/ empty?";
     "pending/ empty?" -> "Stop: no pending changes" [label="yes"];
-    "pending/ empty?" -> "Legacy .jkit/spec-sync exists?" [label="no"];
-    "Legacy .jkit/spec-sync exists?" -> "Offer migration" [label="yes"];
-    "Legacy .jkit/spec-sync exists?" -> "Confirm scope (all or pick one)" [label="no"];
-    "Offer migration" -> "Confirm scope (all or pick one)";
+    "pending/ empty?" -> "Confirm scope (all or pick one)" [label="no"];
     "Confirm scope (all or pick one)" -> "Read change files";
     "Read change files" -> "Infer affected domains";
     "Infer affected domains" -> "Ask clarification questions";
@@ -106,19 +100,7 @@ ls docs/changes/pending/*.md 2>/dev/null
 ```
 
 - No files → stop: *"No pending changes in docs/changes/pending/."*
-- Files found → continue to Step 2a.
-
-**Step 2a: Handle legacy .jkit/spec-sync**
-
-If `.jkit/spec-sync` exists AND `docs/changes/` does not exist:
-
-> "Found legacy `.jkit/spec-sync`. Migrating to change-file tracking.
-> A) Migrate now — create docs/changes/pending/ and docs/changes/done/, archive .jkit/spec-sync (recommended)
-> B) Keep using .jkit/spec-sync — skip migration (not recommended)"
-
-On A: `mkdir -p docs/changes/pending docs/changes/done && mv .jkit/spec-sync .jkit/spec-sync.bak`
-
-On B: continue with legacy flow (read SHA from `.jkit/spec-sync`, run `git diff` against `docs/domains/*/` — same as the old spec-delta behavior).
+- Files found → continue to Step 2b.
 
 **Step 2b: Resume detection**
 
