@@ -13,10 +13,12 @@ description: Use when there are pending change files in docs/changes/pending/ th
 - [ ] Read change files
 - [ ] Infer affected domains
 - [ ] Ask clarification questions
-- [ ] Update formal docs inline
+- [ ] Update formal docs (inline or per-domain subagent)
+- [ ] Run `scenarios sync` per affected domain
+- [ ] Doc compliance review subagent (loop until ✅ or cap)
 - [ ] Human reviews (git reset escape hatch)
 - [ ] Schema analysis (git diff docs/domains/*/)
-- [ ] Invoke scenario-gap per changed domain
+- [ ] Run `scenarios gap` per affected domain
 - [ ] Create run directory + write .change-files
 - [ ] Write change-summary.md
 - [ ] Get change-summary approval
@@ -37,10 +39,15 @@ digraph spec_delta {
     "Read change files" [shape=box];
     "Infer affected domains" [shape=box];
     "Ask clarification questions" [shape=box];
-    "Update formal docs inline" [shape=box];
+    "Update formal docs\n(inline or per-domain subagent)" [shape=box];
+    "Run scenarios sync per domain" [shape=box];
+    "Doc compliance reviewer subagent" [shape=box];
+    "Reviewer ✅?" [shape=diamond];
+    "Main thread fixes issues" [shape=box];
+    "Loop cap (3) hit?" [shape=diamond];
     "Checkpoint: ready to continue?" [shape=box style=filled fillcolor=lightyellow];
     "git diff docs/domains/*/ → schema analysis" [shape=box];
-    "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.yaml)" [shape=doublecircle];
+    "Run scenarios gap per domain" [shape=box];
     "Create run directory + write .change-files" [shape=box];
     "Write change-summary.md" [shape=box];
     "HARD-GATE: change-summary approval" [shape=box style=filled fillcolor=lightyellow];
@@ -57,11 +64,18 @@ digraph spec_delta {
     "Confirm scope (all or pick one)" -> "Read change files";
     "Read change files" -> "Infer affected domains";
     "Infer affected domains" -> "Ask clarification questions";
-    "Ask clarification questions" -> "Update formal docs inline";
-    "Update formal docs inline" -> "Checkpoint: ready to continue?";
+    "Ask clarification questions" -> "Update formal docs\n(inline or per-domain subagent)";
+    "Update formal docs\n(inline or per-domain subagent)" -> "Run scenarios sync per domain";
+    "Run scenarios sync per domain" -> "Doc compliance reviewer subagent";
+    "Doc compliance reviewer subagent" -> "Reviewer ✅?";
+    "Reviewer ✅?" -> "Checkpoint: ready to continue?" [label="yes"];
+    "Reviewer ✅?" -> "Loop cap (3) hit?" [label="no"];
+    "Loop cap (3) hit?" -> "Main thread fixes issues" [label="no"];
+    "Loop cap (3) hit?" -> "Checkpoint: ready to continue?" [label="yes (escalate)"];
+    "Main thread fixes issues" -> "Doc compliance reviewer subagent";
     "Checkpoint: ready to continue?" -> "git diff docs/domains/*/ → schema analysis" [label="yes"];
-    "git diff docs/domains/*/ → schema analysis" -> "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.yaml)";
-    "REQUIRED SUB-SKILL: scenario-gap\n(per domain with test-scenarios.yaml)" -> "Create run directory + write .change-files";
+    "git diff docs/domains/*/ → schema analysis" -> "Run scenarios gap per domain";
+    "Run scenarios gap per domain" -> "Create run directory + write .change-files";
     "Create run directory + write .change-files" -> "Write change-summary.md";
     "Write change-summary.md" -> "HARD-GATE: change-summary approval";
     "HARD-GATE: change-summary approval" -> "Write change-summary.md" [label="edit requested"];
@@ -143,73 +157,94 @@ If ambiguous:
 
 **Step 6: Ask clarification questions**
 
-One at a time. Only for genuine ambiguities in the change description. Each question:
+Batch all questions into a single numbered prompt. Do not ask one at a time. Format:
+
+> "Before updating the formal docs, a few questions:
+>
+> **Q1.** <question>
+>   A) <option> (recommended)
+>   B) <option>
+>   C) <option>
+>
+> **Q2.** <question>
+>   A) ..."
+
+Each question:
 - 2–3 labeled options (A, B, C)
-- One marked `(recommended)`
+- Exactly one marked `(recommended)`
 
-Examples of genuine ambiguities: transactional vs. best-effort semantics, sync vs. async behavior, whether a new entity needs its own table or extends an existing one.
+**Only ask if all three skip-criteria fail:**
+1. The change description is **genuinely ambiguous** — multiple reasonable implementations exist.
+2. **No default exists** from the domain's existing conventions (inspect `docs/domains/<domain>/` before asking).
+3. The question is about **semantic intent**, not implementation detail (don't ask how to name an internal method, a column type where the spec is explicit, or which Java package to use).
 
-**Step 7: Update formal docs inline**
+If all three pass, ask. Otherwise pick the sensible default and proceed — document the assumption in the change-summary later.
 
-For each affected domain, update the three spec files to reflect the change description and clarification answers, in this order:
+Examples of genuine ambiguities that pass the filter: transactional vs. best-effort semantics, sync vs. async behavior, whether a new entity gets its own table or extends an existing one, whether a new field is nullable.
+
+If there are zero questions after filtering, skip this step entirely and proceed to Step 7.
+
+**Step 7: Update formal docs**
+
+For each affected domain, update the three spec files in this order:
 
 1. `docs/domains/<domain>/domain-model.md` — add new entities, fields, or relationships
 2. `docs/domains/<domain>/api-implement-logic.md` — add new service methods, business rules
 3. `docs/domains/<domain>/api-spec.yaml` — add new endpoints, request/response schemas
 
-Update model → logic → spec so each file can reference the previous. Write all files before asking the human anything.
+Update model → logic → spec so each file can reference the previous.
 
-Then tell the human:
+### Execution mode — choose based on domain count
 
-> "Formal docs updated. Review with `git diff -- docs/domains/*/`. Ready to continue?"
+**1 affected domain → Inline.** Read each file, apply edits via the Edit tool. No subagent overhead.
 
-If the human requests a change, fix it inline and ask again. Wait for confirmation before proceeding to schema analysis.
+**2+ affected domains → Per-domain subagent.** Dispatch one `general-purpose` subagent per domain in parallel (single message, multiple Agent tool calls). Each subagent receives:
+
+- The change file content (full)
+- All clarification answers from Step 6 (or "none" if Step 6 was skipped)
+- The domain name and the three file paths it must update
+- Explicit instructions: "Update these three files in the model→logic→spec order. Only edit sections related to the change. Do not touch unrelated content. Do not create new files. Do not run tests or other tools. Report 'done' when all three are saved."
+
+Subagents must not request clarifications — any ambiguity was resolved in Step 6. If a subagent reports `BLOCKED` or asks a question, fall back to inline for that domain.
+
+### After edits (both modes)
+
+Write all files before proceeding. Do not prompt the human yet — the human review happens in Step 7c, after doc-compliance review and the `scenarios sync` pass.
 
 **Step 7b: Sync test-scenarios.yaml**
 
-For each endpoint added or modified in this change (only the delta, not the full spec), generate scenario IDs using this table:
+For each affected domain, run:
 
-| Source in api-spec.yaml | Generated scenario ID |
-|---|---|
-| Always | `happy-path` |
-| `required` field in request body | `validation-<field>-missing` |
-| Response `400` or `422` | `validation-<description-slug>` (fallback: `validation-bad-request`) |
-| Response `401` | `auth-missing-token` |
-| Response `403` | `auth-<description-slug>` |
-| Response `404` | `not-found` |
-| Response `409` | `business-<description-slug>` |
+```bash
+scenarios sync <domain>
+```
 
-`<description-slug>` = the response description text alone, kebab-cased — the category prefix (`business-`, `auth-`, `validation-`) comes from the table row, not the description (e.g., description `"Duplicate idempotency key"` + row prefix `business-` → `business-duplicate-idempotency-key`).
+This parses the current `docs/domains/<domain>/api-spec.yaml`, derives the required scenario set, and appends any missing entries to `docs/domains/<domain>/test-scenarios.yaml`. Append-only and idempotent — existing entries are never modified or reordered. Derivation rules live in `docs/scenarios-prd.md`; do not replicate them here.
 
-Then merge into `docs/domains/<domain>/test-scenarios.yaml`:
+After running `scenarios sync` for all affected domains, proceed to Step 7c before asking the human.
 
-1. If the file does not exist → create it with all derived scenario entries
-2. If it exists → read it, collect all existing `id` values, then append new entries for IDs not already present
-3. Never delete or reorder existing entries — only append
+**Step 7c: Doc compliance review (subagent)**
 
-Format is a flat YAML list — one entry per scenario, append new blocks at end of file:
+Dispatch a `general-purpose` subagent using `./reviewer-prompts/doc-compliance.md`. Fill the template with:
+- Full content of every change file processed in this run
+- Verbatim Step 6 Q/A pairs (or "None — Step 6 skipped")
+- Any silent defaults recorded during Step 6 filtering
+- Affected domain list and execution mode (inline vs. per-domain subagent)
 
-~~~yaml
-- endpoint: "POST /invoices/bulk"
-  id: happy-path
-  description: valid list of 3 → 201 + invoice IDs        # always
+Reviewer output is one of:
 
-- endpoint: "POST /invoices/bulk"
-  id: validation-amount-missing
-  description: missing amount field → 400                  # required field "amount"
+- **✅ Compliant** → proceed to the human review prompt below.
+- **❌ Issues: [...]** → main thread fixes the listed issues directly (do not re-dispatch the updater subagent — targeted fixes don't need fresh context), then re-dispatch the reviewer with the same inputs.
 
-- endpoint: "POST /invoices/bulk"
-  id: auth-missing-token
-  description: missing token → 401                         # response 401
+Loop cap: 3 reviewer iterations. If the reviewer is still unhappy on the 4th pass, stop the loop and escalate to the human, surfacing the reviewer's remaining notes alongside the diff. The human decides whether to proceed.
 
-- endpoint: "POST /invoices/bulk"
-  id: business-duplicate-idempotency-key
-  description: duplicate idempotency key → 409             # response 409
-~~~
+### Human review
 
-After syncing `test-scenarios.yaml` for all changed domains, include the updated files in the same human review prompt from Step 7:
+Once the reviewer returns ✅ (or the loop cap forces escalation):
 
 > "Formal docs updated. Review with `git diff -- docs/domains/*/`. Ready to continue?"
+
+If the human requests a change, fix it in the main thread (no reviewer re-run — the human is the final arbiter). Wait for confirmation before proceeding to schema analysis.
 
 **Step 8: Schema analysis**
 
@@ -223,13 +258,15 @@ This produces a precise diff of only what was just updated in Step 7. Read this 
 
 **Step 9: Scenario gap detection**
 
-For each changed domain that has `docs/domains/<domain>/test-scenarios.yaml`:
+For each affected domain that has `docs/domains/<domain>/test-scenarios.yaml`:
 
 ```bash
-scenario-gap <domain> --new
+scenarios gap <domain>
 ```
 
-Read the JSON output (array of `{endpoint, id, description}` objects). Collect all gaps across domains — written into change-summary.md in Step 11. If output is `[]` for all domains, omit the Test Scenario Gaps section entirely.
+Read the JSON output (array of `{endpoint, id, description}` objects). Collect gaps across domains — written into change-summary.md in Step 11. If output is `[]` for all domains, omit the Test Scenario Gaps section entirely.
+
+Note: `scenarios gap` reports **all** unimplemented scenarios in the yaml, not just the ones added by this change's sync. Pre-existing gaps will appear — treat them as in-scope unfinished work for the human to decide about during change-summary approval.
 
 **Step 10: Create run directory + write .change-files**
 
@@ -247,13 +284,13 @@ Write `.jkit/YYYY-MM-DD-<feature>/.change-files` — one basename per line for e
 
 **Step 11: Write change-summary.md**
 
-Write `.jkit/<run>/change-summary.md`:
+Mechanical template-fill. Each section has a designated source — do not invent content beyond what those sources produce. Write `.jkit/<run>/change-summary.md` using this template:
 
 ```markdown
 # Change Summary: <feature>
 
 **Date:** YYYY-MM-DD
-**Change files:** 2026-04-24-bulk-invoice.md
+**Change files:** <comma-separated basenames from Step 4>
 
 ## Domains Changed
 
@@ -265,23 +302,27 @@ Write `.jkit/<run>/change-summary.md`:
 Yes / No
 [If yes: brief description of implied changes]
 
-## Cross-Domain Effects
-None / [description]
-
-## Implementation Order
-1. billing/domain-model (BulkInvoice entity)
-2. billing/api-implement-logic (BulkInvoiceService)
-3. billing/api-spec (POST /invoices/bulk)
-
 ## Test Scenario Gaps
+12 unimplemented across 2 domains — run `scenarios gap <domain>` for the list.
 
-| Domain | Endpoint | Scenario |
-|--------|----------|---------|
-| billing | POST /invoices/bulk | happy-path: valid list of 3 → 201 |
-| billing | POST /invoices/bulk | validation-empty-list: empty list → 400 |
-
-(Omit Test Scenario Gaps section if no changed domain has test-scenarios.yaml)
+## Assumptions
+- <any default picked when a Step-6 question was skipped by the filter>
 ```
+
+### Source mapping (where each section comes from)
+
+| Section | Source | How to fill |
+|---|---|---|
+| **Date** | Today's date | `YYYY-MM-DD` |
+| **Change files** | `.change-files` written in Step 10 | Comma-join the basenames |
+| **Domains Changed** | Step 5 domain list + `git diff --stat -- docs/domains/*/` | One row per affected domain; Added/Modified/Removed taken from the diff entities (no prose) |
+| **Schema Change Required** | Step 8 reasoning output | `Yes` + one-line summary, or `No` |
+| **Test Scenario Gaps** | Step 9 JSON | Count total entries across domains plus the domain count; one-line format. Omit the whole section if every domain returned `[]` |
+| **Assumptions** | Defaults chosen in Step 6 skip-filter | Omit the section if no defaults were silently picked |
+
+No "Cross-Domain Effects" section — if there is a cross-domain effect, it will already appear as multiple rows in **Domains Changed**. Prose descriptions of cross-domain coupling tend to be speculative; skip them.
+
+Do not add sections beyond the template. Do not paraphrase the change description — the raw change files are already in `.change-files` for reference.
 
 Tell human: `"Written to .jkit/<run>/change-summary.md"`
 
@@ -314,6 +355,7 @@ When running writing-plans, apply these adjustments:
 1. **Plan location:** save to `.jkit/<run>/plan.md` (not the superpowers default)
 2. **Plan header note:** replace the agentic-worker note with:
    > `For agentic workers: REQUIRED SUB-SKILL: Use java-tdd to implement this plan (TDD workflow with JaCoCo coverage analysis and integration test scaffolding).`
+3. **Skip the Execution Handoff prompt.** writing-plans' default ends by asking "Subagent-Driven or Inline Execution?" — do not ask that. spec-delta owns execution routing in Step 14. Return control to spec-delta immediately after the self-review pass completes.
 
 **Step 14: Plan approval and handoff**
 
