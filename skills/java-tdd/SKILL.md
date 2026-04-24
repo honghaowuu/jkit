@@ -49,7 +49,7 @@ No exceptions:
 - [ ] Implement via superpowers:test-driven-development per task
 - [ ] Compile check after each task (max 3 retries)
 - [ ] Run mvn test + jacoco:report
-- [ ] Run jkit coverage
+- [ ] Run jacoco-filter
 - [ ] Fill unit coverage gaps via TDD
 - [ ] Repeat until no gaps above threshold
 - [ ] Invoke scenario-tdd
@@ -66,7 +66,7 @@ digraph java_tdd {
     "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)" [shape=box];
     "mvn compile test-compile -q\n(max 3 retries)" [shape=box];
     "mvn clean test\njacoco:report" [shape=box];
-    "jkit coverage\n--summary --min-score 1.0" [shape=box];
+    "jacoco-filter\n--summary --min-score 1.0" [shape=box];
     "Gaps above threshold?" [shape=diamond];
     "TDD per gap" [shape=box];
     "More tasks?" [shape=diamond];
@@ -82,8 +82,8 @@ digraph java_tdd {
     "mvn compile test-compile -q\n(max 3 retries)" -> "More tasks?";
     "More tasks?" -> "superpowers:test-driven-development\n(RED → GREEN → REFACTOR)" [label="yes"];
     "More tasks?" -> "mvn clean test\njacoco:report" [label="no"];
-    "mvn clean test\njacoco:report" -> "jkit coverage\n--summary --min-score 1.0";
-    "jkit coverage\n--summary --min-score 1.0" -> "Gaps above threshold?";
+    "mvn clean test\njacoco:report" -> "jacoco-filter\n--summary --min-score 1.0";
+    "jacoco-filter\n--summary --min-score 1.0" -> "Gaps above threshold?";
     "Gaps above threshold?" -> "TDD per gap" [label="yes"];
     "TDD per gap" -> "mvn clean test\njacoco:report";
     "Gaps above threshold?" -> "Invoke scenario-tdd" [label="no"];
@@ -144,8 +144,11 @@ mvn clean test jacoco:report
 If command fails or `target/site/jacoco/jacoco.xml` is absent: stop and ask the human to verify the JaCoCo plugin configuration.
 
 ```bash
-bin/jkit coverage target/site/jacoco/jacoco.xml --summary --min-score 1.0
+jacoco-filter target/site/jacoco/jacoco.xml --summary --min-score 1.0
 ```
+
+Output shape: `{"summary": {"line_coverage_pct": ..., "lines_covered": ..., "lines_missed": ..., "by_class": [...]}, "methods": [...]}`.
+The gap list is `methods[]` sorted by score descending. Overall coverage is `summary.line_coverage_pct`.
 
 For each method with gaps above threshold (in priority order): invoke `superpowers:test-driven-development` targeting that specific uncovered path. Repeat until no methods above threshold.
 
