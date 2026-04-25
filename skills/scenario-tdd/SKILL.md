@@ -7,32 +7,25 @@ description: Use when implementing integration test scenarios identified as gaps
 
 ## Iron Law
 
-```
-NO INTEGRATION TEST WITHOUT A FAILING HTTP TEST FIRST.
+`superpowers:test-driven-development` owns RED → GREEN → REFACTOR. This skill adds the integration-test-specific gates: prerequisites bootstrap, scenario-driven gap loop, per-gap RED-first discipline.
 
-Write the RestAssured assertion after the endpoint already passes? Delete it. Start over.
-
-No exceptions:
-- Don't generate multiple tests at once then fix failures
-- Don't write "placeholder" tests that always pass
-- One scenario → RED → GREEN → next scenario
-```
+**One scenario → one failing HTTP test → GREEN → next scenario.** No batch generation. No placeholder tests.
 
 ## Rationalization Table
 
 | Excuse | Reality |
 |--------|---------|
-| "The unit tests already cover this logic" | Unit tests mock HTTP. Integration tests verify the actual endpoint wires correctly end-to-end. |
-| "I'll write all scenarios first, then run them" | Batch generation produces batch failures. You lose the signal of which scenario caused what. |
-| "The happy path passes, the error cases are obvious" | Auth failures, validation edge cases, and missing headers are where bugs live. Write the test. |
-| "This endpoint is simple, one test is enough" | Each scenario is a contract. Simple endpoints have the same contract obligations. |
+| "Unit tests already cover this logic" | Unit tests mock HTTP. Integration tests verify the endpoint wires end-to-end. |
+| "I'll write all scenarios first, then run them" | Batch generation hides which scenario broke what. |
+| "Happy path passes, error cases are obvious" | Auth, validation edges, missing headers — that's where bugs live. |
+| "Endpoint is simple, one test is enough" | Each scenario is a contract. |
 
 ## Checklist
 
 - [ ] Load java-coding-standards
-- [ ] Detect Spring Boot version + prerequisites
-- [ ] Read affected domains + run `scenarios gap` per domain
-- [ ] TDD loop: per gap scenario
+- [ ] Run `scenarios prereqs --apply`
+- [ ] Run `scenarios gap --run <dir>`
+- [ ] Per gap: lightweight gate → `superpowers:test-driven-development` (or `scenarios skip`)
 - [ ] Invoke java-verify
 
 ## Process Flow
@@ -40,142 +33,90 @@ No exceptions:
 ```dot
 digraph scenario_tdd {
     "Load java-coding-standards" [shape=box];
-    "Detect SB version\n+ prerequisites" [shape=box];
-    "Read affected domains\n+ run scenarios gap" [shape=box];
-    "Gaps to implement?" [shape=diamond];
-    "Done → invoke java-verify" [shape=doublecircle];
-    "Next gap scenario" [shape=box];
-    "Show scenario to human\n(lightweight gate)" [shape=box];
-    "Write failing RestAssured test" [shape=box];
-    "Run test → RED?" [shape=diamond];
-    "Rewrite test once\n(still green? ask human)" [shape=box];
-    "Fix until GREEN" [shape=box];
-    "More gaps?" [shape=diamond];
+    "scenarios prereqs --apply" [shape=box];
+    "Ready?" [shape=diamond];
+    "Stop + report" [shape=box];
+    "scenarios gap --run <dir>" [shape=box];
+    "Gaps?" [shape=diamond];
+    "Done -> java-verify" [shape=doublecircle];
+    "Lightweight gate" [shape=box];
+    "scenarios skip" [shape=box];
+    "TDD per scenario" [shape=box];
 
-    "Load java-coding-standards" -> "Detect SB version\n+ prerequisites";
-    "Detect SB version\n+ prerequisites" -> "Read affected domains\n+ run scenarios gap";
-    "Read affected domains\n+ run scenarios gap" -> "Gaps to implement?";
-    "Gaps to implement?" -> "Done → invoke java-verify" [label="none"];
-    "Gaps to implement?" -> "Next gap scenario" [label="yes"];
-    "Next gap scenario" -> "Show scenario to human\n(lightweight gate)";
-    "Show scenario to human\n(lightweight gate)" -> "Write failing RestAssured test" [label="approved"];
-    "Show scenario to human\n(lightweight gate)" -> "Next gap scenario" [label="skip"];
-    "Write failing RestAssured test" -> "Run test → RED?";
-    "Run test → RED?" -> "Fix until GREEN" [label="yes"];
-    "Run test → RED?" -> "Rewrite test once\n(still green? ask human)" [label="no (green immediately)"];
-    "Rewrite test once\n(still green? ask human)" -> "Run test → RED?";
-    "Fix until GREEN" -> "More gaps?";
-    "More gaps?" -> "Next gap scenario" [label="yes"];
-    "More gaps?" -> "Done → invoke java-verify" [label="no"];
+    "Load java-coding-standards" -> "scenarios prereqs --apply";
+    "scenarios prereqs --apply" -> "Ready?";
+    "Ready?" -> "scenarios gap --run <dir>" [label="yes"];
+    "Ready?" -> "Stop + report" [label="no"];
+    "scenarios gap --run <dir>" -> "Gaps?";
+    "Gaps?" -> "Done -> java-verify" [label="empty"];
+    "Gaps?" -> "Lightweight gate" [label="entries"];
+    "Lightweight gate" -> "TDD per scenario" [label="approve"];
+    "Lightweight gate" -> "scenarios skip" [label="skip"];
+    "scenarios skip" -> "scenarios gap --run <dir>";
+    "TDD per scenario" -> "scenarios gap --run <dir>";
 }
 ```
 
 ## Detailed Flow
 
-**Step 0: Load java-coding-standards**
+**Step 0 — Load java-coding-standards.** Read `<plugin-root>/docs/java-coding-standards.md`.
 
-Read `<plugin-root>/docs/java-coding-standards.md`. Apply all rules.
-
-**Step 1: Detect Spring Boot version + prerequisites**
-
-Read `<parent><version>` from `pom.xml`.
-
-| Spring Boot version | Testing strategy |
-|---|---|
-| 3.1+ | `@SpringBootTest(RANDOM_PORT)` + Testcontainers (`@ServiceConnection`) + RestAssured |
-| < 3.1 | `docker-compose.test.yml` → RestAssured against running container |
-
-**Spring Boot 3.1+:** Check `pom.xml` for Testcontainers, RestAssured, WireMock. If missing: add from `templates/pom-fragments/testcontainers.xml`.
-
-**Spring Boot < 3.1:** Resolve container runtime:
-1. `docker compose` / `docker-compose`
-2. `podman compose`
-3. Neither → stop: *"No container runtime found. Install Docker or Podman and re-run."*
-
-Check `docker-compose.test.yml` exists. If missing: copy from `templates/docker-compose.test.yml`.
-
-**Step 2: Read affected domains + fetch gaps**
-
-Read the `## Domains Changed` table from `.jkit/<run>/change-summary.md` (run directory passed by java-tdd). The first column lists the affected domains for this run.
-
-For each affected domain, run:
+**Step 1 — Prerequisites.**
 
 ```bash
-scenarios gap <domain>
+scenarios prereqs --apply
 ```
 
-Each command returns a JSON array of `{endpoint, id, description}` objects. Collect across domains to form the authoritative work list for this run — process gaps in domain order as listed in `## Domains Changed`.
+Read the JSON. Announce non-empty `actions_taken`. Record `runtime` and `testing_strategy` for Step 3. If `ready: false` or `blocking_errors` is non-empty → stop and report verbatim (e.g. *"no container runtime found — install Docker or Podman and re-run"*).
 
-If every domain returns `[]` → no scenario gaps detected; complete immediately, invoke `java-verify`.
+**Step 2 — Fetch gap work list.** The run directory is passed by `java-tdd`. If invoked ad-hoc without one → stop and ask the human for the run dir.
 
-**Step 3: TDD loop**
+```bash
+scenarios gap --run <dir>
+```
 
-Process gaps in the order they appear in change-summary.md (domain order preserved from spec-delta). For each gap scenario:
+Output is the authoritative ordered work list. `[]` → no gaps; jump to Step 4.
+
+**Step 3 — TDD loop.** Process entries in array order. For each entry:
 
 **Lightweight gate** — announce before writing:
-> "Next: `POST /invoices/bulk` — `happy-path`: valid list of 3 → 201 + invoice IDs. Write this test?
-> A) Yes (recommended)
-> B) Edit this scenario
-> C) Skip"
 
-**Write the failing test** targeting exactly this scenario. One test method per scenario.
+> "Next: `<endpoint>` — `<id>`: `<description>`. Write this test?
+> A) Yes (recommended)  B) Edit scenario  C) Skip"
 
-**Run:**
+- **Edit scenario:** human edits `test-scenarios.yaml`; re-run `scenarios gap --run <dir>` and resume.
+- **Skip:** record it, continue.
+
+  ```bash
+  scenarios skip --run <dir> <domain> <id>
+  ```
+
+- **Approve:** delegate the RED → GREEN cycle to `superpowers:test-driven-development`, scoped to:
+
+  | TDD input | Source |
+  |---|---|
+  | Test class path | `test_class_path` from the gap entry (if `null`, compute from `pom.xml` + domain — but binary should not have emitted `null`; treat as a bug) |
+  | Test method name | `test_method_name` from the gap entry |
+  | Assertion target | `description` from the gap entry |
+  | Class scaffolding (new test class only) | `templates/integration-test-sb31.java` if `testing_strategy=testcontainers`, else `templates/integration-test-sb-legacy.java` |
+  | Runner command | See below |
+
+**Runner command** (TDD skill executes between RED and GREEN):
+
 ```bash
-# SB 3.1+
-JKIT_ENV=test direnv exec . mvn test -Dtest=<Domain>IntegrationTest#<methodName>
+# testcontainers strategy
+JKIT_ENV=test direnv exec . mvn test -Dtest=<TestClass>#<methodName>
 
-# SB < 3.1
-<runtime> compose -f docker-compose.test.yml up -d
-JKIT_ENV=test direnv exec . mvn test -Dtest=<Domain>IntegrationTest#<methodName>
+# compose strategy ($RUNTIME from prereqs JSON)
+$RUNTIME compose -f docker-compose.test.yml up -d
+JKIT_ENV=test direnv exec . mvn test -Dtest=<TestClass>#<methodName>
 ```
 
-- **RED (compilation or assertion failure):** expected — continue to fix.
-- **GREEN immediately:** the test is wrong — it proves nothing. Rewrite it to actually fail. If still green after one rewrite attempt: stop and ask *"This scenario may already be covered. Skip it or adjust the assertion?"*
+**Failure classification** (handed back to TDD skill):
 
-Fix production code or test setup until GREEN. Then move to next scenario.
+- Test bug (compile error, wrong assertion) → fix the test only. Never edit production for a test bug.
+- Production failure on a correct assertion → fix production via `superpowers:systematic-debugging`.
 
-**Test class location:** `src/test/java/<group-path>/<service>/<domain>/<Domain>IntegrationTest.java`
+**Resume after interruption.** Re-run `scenarios gap --run <dir>`. Skipped + implemented entries are filtered automatically; the array head is the resume point. No git archaeology.
 
-**Spring Boot 3.1+ template:**
-
-```java
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Testcontainers
-class BillingIntegrationTest {
-    @Container @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15");
-
-    @RegisterExtension
-    static WireMockExtension externalSvc = WireMockExtension.newInstance()
-        .options(wireMockConfig().dynamicPort()).build();
-
-    @LocalServerPort int port;
-    @BeforeEach void setup() { RestAssured.port = port; }
-
-    @Test void bulkInvoice_happyPath() { /* given/when/then */ }
-}
-```
-
-**Spring Boot < 3.1 template:**
-
-```java
-class BillingIntegrationTest {
-    static String baseUri = System.getenv().getOrDefault("SERVICE_BASE_URI", "http://localhost:8080");
-    @BeforeAll static void setup() { RestAssured.baseURI = baseUri; }
-
-    @Test void bulkInvoice_happyPath() { /* given/when/then */ }
-}
-```
-
-**Failure classification:**
-- Compilation failure or wrong assertion → fix generated test. Do NOT change production code for a test bug.
-- Production code fails the correct assertion → fix production code via `superpowers:systematic-debugging`.
-- After one self-fix pass still failing → invoke `superpowers:systematic-debugging`.
-
-**Step 4: Invoke java-verify**
-
-**REQUIRED SUB-SKILL: invoke `java-verify`** after all gap scenarios are covered.
-
-scenario-tdd does NOT own the commit. The commit is `java-tdd`'s responsibility.
-
+**Step 4 — Invoke java-verify.** **REQUIRED SUB-SKILL** once `gap --run` returns `[]`. The commit belongs to `java-tdd`, not this skill.
