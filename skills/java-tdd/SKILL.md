@@ -24,8 +24,8 @@ description: Use when implementing any Java feature or bugfix via test-driven de
 - [ ] Detect plan (latest spec-delta run)
 - [ ] Choose execution mode
 - [ ] Verify JaCoCo plugin
-- [ ] Implement via superpowers:test-driven-development per task
-- [ ] Compile check after each task (max 3 retries)
+- [ ] Implement per Step 2 mode (subagent-driven / inline / ad-hoc)
+- [ ] Compile check after each task (mode 1: inside subagent spec; mode 2 / ad-hoc: parent flow; max 3 retries)
 - [ ] Run mvn test + jacoco:report
 - [ ] Run jacoco-filter
 - [ ] Fill unit coverage gaps via TDD (max 2 no-progress passes, then stop)
@@ -40,9 +40,10 @@ digraph java_tdd {
     "Detect plan?" [shape=diamond];
     "Ask execution mode" [shape=box];
     "Verify JaCoCo" [shape=box];
-    "TDD per task" [shape=box];
-    "Compile check" [shape=box];
-    "More tasks?" [shape=diamond];
+    "Mode?" [shape=diamond];
+    "subagent-driven-development" [shape=box];
+    "executing-plans (inline TDD + compile)" [shape=box];
+    "TDD on described change + compile" [shape=box];
     "Unit coverage report" [shape=box];
     "Filter to gaps" [shape=box];
     "Gaps?" [shape=diamond];
@@ -54,11 +55,13 @@ digraph java_tdd {
     "Detect plan?" -> "Ask execution mode" [label="plan found"];
     "Detect plan?" -> "Verify JaCoCo" [label="ad-hoc"];
     "Ask execution mode" -> "Verify JaCoCo";
-    "Verify JaCoCo" -> "TDD per task";
-    "TDD per task" -> "Compile check";
-    "Compile check" -> "More tasks?";
-    "More tasks?" -> "TDD per task" [label="yes"];
-    "More tasks?" -> "Unit coverage report" [label="no"];
+    "Verify JaCoCo" -> "Mode?";
+    "Mode?" -> "subagent-driven-development" [label="plan + mode 1"];
+    "Mode?" -> "executing-plans (inline TDD + compile)" [label="plan + mode 2"];
+    "Mode?" -> "TDD on described change + compile" [label="ad-hoc"];
+    "subagent-driven-development" -> "Unit coverage report";
+    "executing-plans (inline TDD + compile)" -> "Unit coverage report";
+    "TDD on described change + compile" -> "Unit coverage report";
     "Unit coverage report" -> "Filter to gaps";
     "Filter to gaps" -> "Gaps?";
     "Gaps?" -> "TDD per gap" [label="yes"];
@@ -96,9 +99,13 @@ Subagent model selection (mode 1 only):
 
 **Step 3 — Verify JaCoCo.** Check `pom.xml` for the JaCoCo Maven plugin. If missing, add from `templates/pom-fragments/jacoco.xml` into `<build><plugins>`.
 
-**Step 4 — Implement.** For each plan task (or ad-hoc description), invoke `superpowers:test-driven-development` for the full RED/GREEN/REFACTOR cycle, then compile-check.
+**Step 4 — Implement.** Route by the Step 2 selection:
 
-**Step 4.5 — Compile check (per task):**
+- **Plan + Mode 1 (Subagent-Driven):** invoke `superpowers:subagent-driven-development` with the plan path and the model tier chosen from the table in Step 2. Each subagent task spec MUST embed (a) the java-coding-standards reference and (b) the Step 4.5 compile-check as an acceptance gate before the subagent reports done. The parent flow does not run Step 4.5 itself in this mode.
+- **Plan + Mode 2 (Inline):** invoke `superpowers:executing-plans`. For each task it drives, use `superpowers:test-driven-development` for RED/GREEN/REFACTOR, then run Step 4.5 before advancing to the next task.
+- **Ad-hoc (no plan, from Step 1 branch):** invoke `superpowers:test-driven-development` directly on the described change, then run Step 4.5.
+
+**Step 4.5 — Compile check (per task, inline / ad-hoc / inside subagent spec):**
 ```bash
 mvn compile test-compile -q
 ```
