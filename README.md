@@ -114,6 +114,7 @@ Some skills shell out to third-party tools that must be on `PATH`:
 | `jkit changes init --feature <slug> --files <basenames>` | Create `.jkit/<date>-<feature>/` and write `.change-files` |
 | `jkit changes summary --run <dir> --feature <slug> [--gap-total N --gap-domains M]` | Emit a `change-summary.md` skeleton with deterministic fields filled |
 | `jkit changes complete --run <dir>` | Close a run: move `.change-files` entries from `pending/` to `done/`, archive the run dir to `.jkit/done/`, stage and amend HEAD |
+| `jkit changes doctor` | Read-only diagnostic: detect inconsistencies between `.change-files`, `docs/changes/{pending,done}/`, and active run dirs |
 
 ### `kit` subcommands
 

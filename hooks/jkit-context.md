@@ -14,6 +14,8 @@ After `java-tdd` finishes the final task of a plan, it calls `jkit changes compl
 
 Edit `docs/domains/` only via `/spec-delta`, never directly. Direct edits will be overwritten on the next cycle.
 
+If state ever looks inconsistent (resume points at the wrong run, files missing, etc.) run `jkit changes doctor` for a read-only diagnostic.
+
 ## Environment
 
 Single `application.yml` with `${ENV_VAR:default}`. No `application-{profile}.yml` profiles.

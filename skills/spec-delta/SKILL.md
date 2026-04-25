@@ -8,7 +8,7 @@ description: Use when there are pending change files in docs/changes/pending/ th
 ## Checklist
 
 - [ ] Sync with remote
-- [ ] `jkit changes status` (route by recommendation)
+- [ ] `jkit changes status` + `jkit changes doctor` (halt on any issue-severity finding)
 - [ ] Resume routing (if existing run found)
 - [ ] Confirm scope of pending changes
 - [ ] Read change files
@@ -34,7 +34,9 @@ description: Use when there are pending change files in docs/changes/pending/ th
 ```dot
 digraph spec_delta {
     "Sync with remote" [shape=box];
-    "jkit changes status" [shape=box];
+    "jkit changes status + doctor" [shape=box];
+    "doctor.ok?" [shape=diamond];
+    "Stop: surface doctor issues" [shape=doublecircle];
     "Recommendation?" [shape=diamond];
     "Stop: no pending changes" [shape=doublecircle];
     "Resume routing" [shape=box];
@@ -65,8 +67,10 @@ digraph spec_delta {
     "Apply targeted plan edit" [shape=box];
     "Invoke java-tdd" [shape=doublecircle];
 
-    "Sync with remote" -> "jkit changes status";
-    "jkit changes status" -> "Recommendation?";
+    "Sync with remote" -> "jkit changes status + doctor";
+    "jkit changes status + doctor" -> "doctor.ok?";
+    "doctor.ok?" -> "Stop: surface doctor issues" [label="no"];
+    "doctor.ok?" -> "Recommendation?" [label="yes"];
     "Recommendation?" -> "Stop: no pending changes" [label="no_pending"];
     "Recommendation?" -> "Resume routing" [label="resume"];
     "Recommendation?" -> "Confirm scope (all or pick one)" [label="start_new"];
@@ -125,11 +129,14 @@ git rev-list HEAD..@{u} --count
 
 ```bash
 jkit changes status
+jkit changes doctor
 ```
 
-Reads `docs/changes/pending/`, finds the latest date-prefixed run dir under `.jkit/`, computes the set difference. JSON shape: `{ pending_files, existing_run, recommendation }`.
+`status` reads `docs/changes/pending/`, finds the latest date-prefixed run dir under `.jkit/`, and recommends `no_pending` / `start_new` / `resume`. `doctor` surfaces any structural inconsistencies between `.change-files`, `pending/`, `done/`, and active run dirs.
 
-Route by `recommendation`:
+If `doctor.ok == false` (any `severity: "issue"` finding), stop and surface each finding's `message` + `remediation`. Don't proceed to Step 3 until the human has resolved them. Warnings (`severity: "warning"`) are informational and don't block.
+
+Otherwise, route by `recommendation` from status:
 
 - `"no_pending"` → stop: *"No pending changes in docs/changes/pending/."*
 - `"start_new"` → continue to Step 4 with `pending_files` as scope.
