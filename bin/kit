@@ -1,9 +1,9 @@
 : <<'CMDBLOCK'
 @echo off
 setlocal
-set "BIN=%~dp0jkit-windows-x86_64.exe"
+set "BIN=%~dp0kit-windows-x86_64.exe"
 if not exist "%BIN%" (
-  echo jkit: missing %BIN% 1>&2
+  echo kit: missing %BIN% 1>&2
   exit /b 127
 )
 "%BIN%" %*
@@ -26,12 +26,12 @@ case "$ARCH" in
   amd64) ARCH=x86_64 ;;
   arm64) ARCH=aarch64 ;;
 esac
-BIN="$SCRIPT_DIR/jkit-${OS}-${ARCH}"
+BIN="$SCRIPT_DIR/kit-${OS}-${ARCH}"
 if [ -e "$BIN" ] && [ ! -x "$BIN" ]; then
   chmod +x "$BIN" 2>/dev/null || true
 fi
 if [ ! -x "$BIN" ]; then
-  echo "jkit: no executable for ${OS}-${ARCH} at $BIN" >&2
+  echo "kit: no executable for ${OS}-${ARCH} at $BIN" >&2
   exit 127
 fi
 exec "$BIN" "$@"
