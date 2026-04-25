@@ -1,7 +1,7 @@
-# jkit plan-status — Product Requirements
+# kit plan-status — Product Requirements
 
 **Version:** 1.0
-**Subcommand of:** `jkit`
+**Subcommand of:** `kit` (universal binary, used by every `*kit` language plugin)
 **Status:** proposed extension
 
 ---
@@ -40,7 +40,7 @@ The "run baseline" is the commit that introduced `<run>/plan.md` (computed via `
 ## CLI
 
 ```
-jkit plan-status [--run <dir>]
+kit plan-status [--run <dir>]
 ```
 
 | Argument | Default | Description |
@@ -156,7 +156,7 @@ git2          = "0.19"    # alternative to shelling out to git; pick one
 
 ## Impact on java-tdd
 
-- **Step 1 (Plan detection)** → one `jkit plan-status` call. Skill reads `recommendation` and (if `implement_from_plan`) `plan_path` + `next_pending_task_index`. Removes ~6 lines of in-prompt filesystem + git logic.
+- **Step 1 (Plan detection)** → one `kit plan-status` call. Skill reads `recommendation` and (if `implement_from_plan`) `plan_path` + `next_pending_task_index`. Removes ~6 lines of in-prompt filesystem + git logic.
 - **Resume rule** → `next_pending_task_index` from the same JSON. Removes the "grep `git log --oneline` for `feat(impl)` commits since run baseline, cross-reference against plan tasks" instruction. The accuracy gain here is the main motivation: ordinal matching in a typed binary is reliable; commit-subject pattern matching in-prompt is not.
 
 Net: ~10 skill lines reclaimed, accuracy win on resume.

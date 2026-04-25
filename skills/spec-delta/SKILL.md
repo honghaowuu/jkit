@@ -16,11 +16,11 @@ description: Use when there are pending change files in docs/changes/pending/ th
 - [ ] Infer affected domains
 - [ ] Ask clarification questions
 - [ ] Update formal docs (inline or per-domain subagent)
-- [ ] Run `scenarios sync` per affected domain
+- [ ] Run `kit scenarios sync` per affected domain
 - [ ] Doc compliance review subagent (loop until ✅ or cap)
 - [ ] Human reviews (git reset escape hatch)
 - [ ] Schema analysis (git diff docs/domains/*/)
-- [ ] Run `scenarios gap` per affected domain
+- [ ] Run `jkit scenarios gap` per affected domain
 - [ ] Create run directory + write .change-files
 - [ ] Write change-summary.md
 - [ ] Get change-summary approval
@@ -46,14 +46,14 @@ digraph spec_delta {
     "Infer affected domains" [shape=box];
     "Ask clarification questions" [shape=box];
     "Update formal docs\n(inline or per-domain subagent)" [shape=box];
-    "Run scenarios sync per domain" [shape=box];
+    "Run kit scenarios sync per domain" [shape=box];
     "Doc compliance reviewer subagent" [shape=box];
     "Reviewer ✅?" [shape=diamond];
     "Main thread fixes issues" [shape=box];
     "Loop cap (3) hit?" [shape=diamond];
     "Checkpoint: ready to continue?" [shape=box style=filled fillcolor=lightyellow];
     "git diff docs/domains/*/ → schema analysis" [shape=box];
-    "Run scenarios gap per domain" [shape=box];
+    "Run jkit scenarios gap per domain" [shape=box];
     "Create run directory + write .change-files" [shape=box];
     "Write change-summary.md" [shape=box];
     "HARD-GATE: change-summary approval" [shape=box style=filled fillcolor=lightyellow];
@@ -77,8 +77,8 @@ digraph spec_delta {
     "Validation pass?" -> "Infer affected domains" [label="yes"];
     "Infer affected domains" -> "Ask clarification questions";
     "Ask clarification questions" -> "Update formal docs\n(inline or per-domain subagent)";
-    "Update formal docs\n(inline or per-domain subagent)" -> "Run scenarios sync per domain";
-    "Run scenarios sync per domain" -> "Doc compliance reviewer subagent";
+    "Update formal docs\n(inline or per-domain subagent)" -> "Run kit scenarios sync per domain";
+    "Run kit scenarios sync per domain" -> "Doc compliance reviewer subagent";
     "Doc compliance reviewer subagent" -> "Reviewer ✅?";
     "Reviewer ✅?" -> "Checkpoint: ready to continue?" [label="yes"];
     "Reviewer ✅?" -> "Loop cap (3) hit?" [label="no"];
@@ -86,8 +86,8 @@ digraph spec_delta {
     "Loop cap (3) hit?" -> "Checkpoint: ready to continue?" [label="yes (escalate)"];
     "Main thread fixes issues" -> "Doc compliance reviewer subagent";
     "Checkpoint: ready to continue?" -> "git diff docs/domains/*/ → schema analysis" [label="yes"];
-    "git diff docs/domains/*/ → schema analysis" -> "Run scenarios gap per domain";
-    "Run scenarios gap per domain" -> "Create run directory + write .change-files";
+    "git diff docs/domains/*/ → schema analysis" -> "Run jkit scenarios gap per domain";
+    "Run jkit scenarios gap per domain" -> "Create run directory + write .change-files";
     "Create run directory + write .change-files" -> "Write change-summary.md";
     "Write change-summary.md" -> "HARD-GATE: change-summary approval";
     "HARD-GATE: change-summary approval" -> "Apply targeted edit" [label="B: edit"];
@@ -239,7 +239,7 @@ If a subagent reports `BLOCKED` or asks a question, fall back to inline for that
 For each affected domain:
 
 ```bash
-scenarios sync <domain>
+kit scenarios sync <domain>
 ```
 
 Parses the current `docs/domains/<domain>/api-spec.yaml`, derives the required scenario set, and appends any missing entries to `docs/domains/<domain>/test-scenarios.yaml`. Append-only and idempotent. Derivation rules live in `docs/scenarios-prd.md`; do not replicate them here.
@@ -280,14 +280,14 @@ A precise diff of what Step 9 just changed. Read and reason about whether it imp
 For each affected domain that has `docs/domains/<domain>/test-scenarios.yaml`:
 
 ```bash
-scenarios gap <domain>
+jkit scenarios gap <domain>
 ```
 
 Read the JSON output (array of `{endpoint, id, description}` objects). Collect gap counts across domains for the Step 13 summary line. If output is `[]` for all domains, omit the Test Scenario Gaps section entirely.
 
 **On non-zero exit:** stop and surface stderr — do not proceed to Step 12.
 
-Note: `scenarios gap` reports **all** unimplemented scenarios in the yaml, not just the ones added by this change's sync. Pre-existing gaps will appear — treat them as in-scope unfinished work for the human to decide about during change-summary approval.
+Note: `jkit scenarios gap` reports **all** unimplemented scenarios in the yaml, not just the ones added by this change's sync. Pre-existing gaps will appear — treat them as in-scope unfinished work for the human to decide about during change-summary approval.
 
 ### Step 12 — Create run directory
 
@@ -331,7 +331,7 @@ Yes / No
 [If yes: brief description of implied changes]
 
 ## Test Scenario Gaps
-12 unimplemented across 2 domains — run `scenarios gap <domain>` for the list.
+12 unimplemented across 2 domains — run `jkit scenarios gap <domain>` for the list.
 
 ## Assumptions
 - <any default picked when a Step 8 question was skipped by the filter>

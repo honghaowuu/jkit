@@ -7,7 +7,7 @@ description: Use when publishing the service API contract for other microservice
 
 ## Iron Law
 
-`jkit contract publish` performs irreversible network operations (push to contract repo, marketplace update). Never invoke it without `--confirmed`, and never pass `--confirmed` without explicit human approval at the post-stage gate. The default `dry-run` output is what the human reviews.
+`kit contract publish` performs irreversible network operations (push to contract repo, marketplace update). Never invoke it without `--confirmed`, and never pass `--confirmed` without explicit human approval at the post-stage gate. The default `dry-run` output is what the human reviews.
 
 ## Rationalization Table
 
@@ -27,7 +27,7 @@ description: Use when publishing the service API contract for other microservice
 - [ ] `jkit contract stage` → bundle generated
 - [ ] HARD-GATE: review staged files
 - [ ] Read `.jkit/contract.json`; ask for missing fields
-- [ ] `jkit contract publish --confirmed`
+- [ ] `kit contract publish --confirmed`
 - [ ] Return
 
 ## Process Flow
@@ -43,9 +43,9 @@ digraph publish_contract {
     "jkit contract stage" [shape=box];
     "HARD-GATE: review staged files" [shape=box style=filled fillcolor=lightyellow];
     "Read .jkit/contract.json" [shape=box];
-    "jkit contract publish (dry-run)" [shape=box];
+    "kit contract publish (dry-run)" [shape=box];
     "HARD-GATE: confirm push" [shape=box style=filled fillcolor=lightyellow];
-    "jkit contract publish --confirmed" [shape=box];
+    "kit contract publish --confirmed" [shape=box];
     "Return to caller" [shape=doublecircle];
     "Abort: keep stage, no push" [shape=doublecircle];
 
@@ -60,11 +60,11 @@ digraph publish_contract {
     "HARD-GATE: review staged files" -> "Read .jkit/contract.json" [label="approve"];
     "HARD-GATE: review staged files" -> "Drafted-answers interview" [label="edit"];
     "HARD-GATE: review staged files" -> "Abort: keep stage, no push" [label="abort"];
-    "Read .jkit/contract.json" -> "jkit contract publish (dry-run)";
-    "jkit contract publish (dry-run)" -> "HARD-GATE: confirm push";
-    "HARD-GATE: confirm push" -> "jkit contract publish --confirmed" [label="confirm"];
+    "Read .jkit/contract.json" -> "kit contract publish (dry-run)";
+    "kit contract publish (dry-run)" -> "HARD-GATE: confirm push";
+    "HARD-GATE: confirm push" -> "kit contract publish --confirmed" [label="confirm"];
     "HARD-GATE: confirm push" -> "Abort: keep stage, no push" [label="abort"];
-    "jkit contract publish --confirmed" -> "Return to caller";
+    "kit contract publish --confirmed" -> "Return to caller";
 }
 ```
 
@@ -155,7 +155,7 @@ Show the file list. Ask:
 **Step 8 — Publish dry-run.**
 
 ```bash
-jkit contract publish --service <service>
+kit contract publish --service <service>
 ```
 
 (No `--confirmed` — this is the dry-run that surfaces what will happen.) Read `would_push_files`, `would_run`, `would_commit`. Show the human:
@@ -172,7 +172,7 @@ On B: stop. The stage and `.jkit/contract.json` are preserved for a future re-ru
 **Step 9 — Publish (confirmed).**
 
 ```bash
-jkit contract publish --service <service> --confirmed
+kit contract publish --service <service> --confirmed
 ```
 
 The binary handles push, marketplace sync, catalog write, and the two `chore(contract):` commits. Announce the resulting commit SHAs and the contract repo URL.

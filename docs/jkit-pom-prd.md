@@ -1,28 +1,29 @@
-# pom-doctor — Product Requirements
+# jkit pom — Product Requirements
 
 **Version:** 1.0
+**Subcommand of:** `jkit` (Java-specific binary)
 **Language:** Rust
-**Binary name:** `pom-doctor`
+**Status:** proposed (replaces the previously-proposed standalone `pom-doctor` binary; folded into `jkit` for one-binary-per-language consistency)
 
 ---
 
 ## Purpose
 
-A deterministic CLI that owns **all** `pom.xml` mutations for the jkit pipeline. Higher-level binaries (`scenarios`) and skills (`java-tdd`, `java-verify`, `scenario-tdd`) delegate pom-checking and pom-fragment installation to `pom-doctor` so:
+A deterministic subcommand that owns **all** `pom.xml` mutations for the jkit pipeline. Higher-level subcommands (`jkit scenarios prereqs`, `jkit contract stage`) and skills (`java-tdd`, `java-verify`, `scenario-tdd`) delegate pom-checking and pom-fragment installation to `jkit pom` so:
 
 1. There is **one** XML parser, one mutation engine, one set of bundled fragment templates — no drift across consumers.
 2. The error model and output schema are uniform — every caller consumes the same JSON shape.
 3. Pom mutation, the most error-prone in-prompt operation in the pipeline, lives in a single typed binary with tests.
 
-**Design principle:** pom-doctor is a primitive. It does not detect Spring Boot versions, probe runtimes, or copy non-pom files. Composite operations (e.g. "set up scenario testing for this project") live in higher-level binaries that compose pom-doctor with their own concerns.
+**Design principle:** `jkit pom` is a primitive. It does not detect Spring Boot versions, probe runtimes, or copy non-pom files. Composite operations (e.g. "set up scenario testing for this project") live in higher-level subcommands that compose `jkit pom` with their own concerns.
 
 ---
 
 ## CLI
 
 ```
-pom-doctor prereqs --profile <profile> [--apply] [--pom <path>]
-pom-doctor add-dep --group-id <gid> --artifact-id <aid> --version <ver> [--scope <scope>] [--apply] [--pom <path>]
+jkit pom prereqs --profile <profile> [--apply] [--pom <path>]
+jkit pom add-dep --group-id <gid> --artifact-id <aid> --version <ver> [--scope <scope>] [--apply] [--pom <path>]
 ```
 
 ### `prereqs` — static-profile installation
@@ -50,7 +51,7 @@ For deps that aren't part of a fixed profile (e.g. an SDK chosen at runtime by a
 
 ## Profiles
 
-Each profile names a pom-fragment bundle the binary knows about. Templates are compiled into the binary via `include_str!` from `crates/pom-doctor/templates/`.
+Each profile names a pom-fragment bundle the subcommand knows about. Templates are compiled into the `jkit` binary via `include_str!` from `crates/jkit/templates/pom-fragments/`.
 
 | Profile | Fragments | Inserts under |
 |---|---|---|
@@ -160,35 +161,35 @@ quick-xml  = { version = "0.36", features = ["serialize"] }
 
 ## Impact on other binaries
 
-### `scenarios prereqs` (v2.1 → v2.2)
+### `jkit scenarios prereqs`
 
 Currently does: SB version detection + pom mutation (testcontainers or compose) + runtime probing + compose template copying.
 
 Under this change, scenarios becomes a thin orchestrator:
 
 1. SB version detection — stays in scenarios.
-2. Pom mutation — delegates to `pom-doctor prereqs --profile testcontainers` or `--profile compose`.
+2. Pom mutation — delegates to `jkit pom prereqs --profile testcontainers` or `--profile compose`.
 3. Runtime probing — stays in scenarios.
 4. Compose template copying — stays in scenarios.
 
-The scenarios prereqs output JSON gains a `pom_status` key carrying pom-doctor's response verbatim, alongside the existing `runtime` / `missing_files` / etc. fields.
+The `jkit scenarios prereqs` output JSON gains a `pom_status` key carrying `jkit pom`'s response verbatim, alongside the existing `runtime` / `missing_files` / etc. fields.
 
-### `jacoco-filter prereqs` (proposed v1.1) — **removed**
+### `jkit coverage` and the former standalone `jacoco-filter`
 
-Folded into `pom-doctor prereqs --profile jacoco`. The jacoco-filter v1.1 PRD reduces to just the `--iteration-state` flag. Callers (java-tdd Step 3) invoke pom-doctor directly.
+The previously-proposed `jacoco-filter prereqs` subcommand is folded into `jkit pom prereqs --profile jacoco`. The remaining JaCoCo functionality (filtering, scoring, `--iteration-state`) lives in `jkit coverage` — see `docs/jkit-coverage-prd.md`.
 
 ### `bin/pom-add.sh` — **removed**
 
-The previous shell-based pom mutator was deleted alongside this PRD landing. Quality, jacoco, and testcontainers fragments are all now sourced from `pom-doctor`'s bundled templates.
+The previous shell-based pom mutator was deleted alongside this PRD landing. Quality, jacoco, and testcontainers fragments are all now sourced from `jkit pom`'s bundled templates.
 
 ---
 
 ## Impact on skills
 
-- **java-tdd Step 3** → `pom-doctor prereqs --profile jacoco --apply`.
-- **java-verify Step 1** → `pom-doctor prereqs --profile quality --apply`.
-- **scenario-tdd Step 1** → unchanged at the skill level (continues to call `scenarios prereqs`); the orchestration shift is internal to scenarios.
-- **publish-contract Step 5 (stage)** → `pom-doctor prereqs --profile smart-doc --apply` (delegated by `jkit contract stage`).
-- **generate-feign SDK opt-in** → `pom-doctor add-dep --group-id ... --artifact-id ... --version ... --apply`.
+- **java-tdd Step 3** → `jkit pom prereqs --profile jacoco --apply`.
+- **java-verify Step 1** → `jkit pom prereqs --profile quality --apply`.
+- **scenario-tdd Step 1** → unchanged at the skill level (continues to call `jkit scenarios prereqs`); the orchestration shift is internal to that subcommand.
+- **publish-contract Step 5 (stage)** → `jkit pom prereqs --profile smart-doc --apply` (delegated by `jkit contract stage`).
+- **generate-feign SDK opt-in** → `jkit pom add-dep --group-id ... --artifact-id ... --version ... --apply`.
 
 Net architectural effect: every pom-mutation point in the pipeline goes through one binary, one schema, one bundled-template set, one error model.

@@ -1,30 +1,23 @@
 # jkit contract — Product Requirements
 
-**Version:** 1.0
-**Subcommands of:** `jkit`
-**Status:** proposed extension
+**Version:** 1.1
+**Subcommand of:** `jkit` (Java-specific binary)
+**Status:** proposed (split from v1.0; the `publish` subcommand moved to `kit contract publish` as language-agnostic — see `docs/kit-contract-publish-prd.md`)
 
 ---
 
 ## Purpose
 
-Three new `jkit` subcommands that own the mechanical halves of service-contract publication, so the `publish-contract` skill stops scraping pom/Spring config, walking codeskel output by hand, computing Javadoc-quality thresholds in-prompt, and orchestrating shell-script chains for git push and marketplace sync.
+Two `jkit` subcommands that own the **Java-specific halves** of service-contract publication — discovering the Java/Spring service shape and generating a Java-idiomatic contract bundle (smart-doc, Javadoc-driven domains).
 
 | Subcommand | Owns |
 |---|---|
 | `jkit contract service-meta` | Service name resolution, controller discovery (annotation-driven), domain-slug derivation, Javadoc-quality scoring, SDK detection |
-| `jkit contract stage` | smart-doc plugin install (via pom-doctor), `smart-doc.json` create/merge, `mvn smart-doc:openapi`, JSON→YAML, template instantiation for `SKILL.md` / `domains/*.md` / `plugin.json` |
-| `jkit contract publish` | Contract repo push, marketplace.json update, `claude plugin marketplace update`, catalog write, scoped commits with `chore(contract):` prefix |
+| `jkit contract stage` | smart-doc plugin install (via `jkit pom`), `smart-doc.json` create/merge, `mvn smart-doc:openapi`, JSON→YAML, template instantiation for `SKILL.md` / `domains/*.md` / `plugin.json` |
 
-The three subcommands map cleanly to the three phases of the existing skill:
+The publication phase (push + marketplace + commits) is identical regardless of source language — it lives in `kit contract publish`.
 
-1. **Discovery** (service-meta) — what does this service look like?
-2. **Generation** (stage) — produce a reviewable contract bundle.
-3. **Publication** (publish) — push to GitHub + marketplace.
-
-A hard-gate lives between phases 2 and 3 — `publish` refuses to do anything without an explicit `--confirmed` flag.
-
-**Design principle:** binaries own discovery, deterministic generation, and irreversible network operations. The skill owns the human gates and the structured interview (judgment-heavy: descriptions, invariants, "not responsible for"). Templates live in the binary so every contract this repo emits is byte-identical in shape.
+**Design principle:** the language plugin owns discovery and bundle generation; `kit` owns the language-agnostic push step. Future `gkit contract service-meta` and `gkit contract stage` will follow this same shape with Go-specific implementations (chi/echo route scanning, Go OpenAPI generators), and will then hand off to the same `kit contract publish` for the irreversible network step.
 
 ---
 
@@ -179,7 +172,7 @@ jkit contract stage --service <name> --interview <path> --domains <slug,...> [--
 1. Validate `--service` matches a service detectable in cwd (re-runs service-meta internally for cross-checking; rejects mismatch).
 2. Validate `--interview` JSON against the schema above.
 3. Validate every `--domains` slug appears in `controllers[].domain_slug` from service-meta. Unknown → exit 1.
-4. Install smart-doc plugin if missing: invoke `pom-doctor prereqs --profile smart-doc --apply`. Capture output under `pom_status`.
+4. Install smart-doc plugin if missing: invoke `jkit pom prereqs --profile smart-doc --apply`. Capture output under `pom_status`.
 5. Create or merge `smart-doc.json`:
    - If absent: write fresh from bundled template.
    - If present: preserve all existing keys; overwrite only `outPath`, `openApiAllInOne`, `sourceCodePaths`.
@@ -204,7 +197,7 @@ jkit contract stage --service <name> --interview <path> --domains <slug,...> [--
     ".jkit/contract-stage/billing/domains/invoice.md",
     ".jkit/contract-stage/billing/reference/contract.yaml"
   ],
-  "pom_status": { "...verbatim pom-doctor response..." },
+  "pom_status": { "...verbatim jkit pom response..." },
   "smart_doc_action": "merged_existing",
   "mvn_smart_doc": "ok",
   "gitignore_updated": true,
@@ -238,103 +231,15 @@ Source-of-truth lives at `<repo>/skills/publish-contract/templates/`; copied int
 | Code | Meaning |
 |---|---|
 | 0 | Success (including `--dry-run`) |
-| 1 | Validation failure; mvn failure; pom-doctor failure; I/O error |
+| 1 | Validation failure; mvn failure; jkit pom failure; I/O error |
 
 ---
 
-## `jkit contract publish`
+## `kit contract publish` — language-agnostic publication
 
-Push contract repo, sync marketplace, write catalog, scoped commits. **Default is dry-run** — the binary describes what it would do. `--confirmed` is required to actually push.
+The publication phase (push to contract repo, marketplace.json update, `claude plugin marketplace update`, catalog write, scoped commits) is independent of how the staged bundle was generated. It lives in `kit` so `gkit`/`tskit`/etc. all share one push implementation.
 
-### CLI
-
-```
-jkit contract publish --service <name> [--confirmed] [--no-commit]
-```
-
-| Argument | Default | Description |
-|---|---|---|
-| `--service <name>` | required | Service name (matches the staged dir at `.jkit/contract-stage/<service>/`) |
-| `--confirmed` | false | **Mandatory for any network or git mutation.** Without it: dry-run reporting only. |
-| `--no-commit` | false | Skip the `chore(contract):` commits at the end (caller wants to manage commits) |
-
-### Algorithm
-
-1. Read `.jkit/contract.json`. Missing or any field absent → exit 1 with the missing field list (skill gathers them and re-runs).
-2. Check `.jkit/contract-stage/<service>/` exists and is non-empty. Missing → exit 1.
-3. Without `--confirmed`: emit a JSON description of the planned actions; do not push, do not commit. Exit 0.
-4. With `--confirmed`:
-   - Push contract repo to `contractRepo` (init the staging dir as a git repo if not already; force-push protected by branch rules at GitHub).
-   - Clone `marketplaceRepo` to a tempdir; update `marketplace.json` to include this contract; push; delete the tempdir.
-   - Run `claude plugin marketplace update <marketplaceName>`.
-   - Write `.jkit/marketplace-catalog.json` with the catalog snapshot.
-5. Unless `--no-commit`:
-   - If `smart-doc.json` or `pom.xml` were modified during the run, commit them as `chore(contract): add smart-doc configuration`.
-   - Commit `.jkit/contract.json`, `.gitignore`, `.jkit/marketplace-catalog.json` as `chore(contract): publish service contract for <service>`.
-6. Emit JSON describing what was pushed and committed.
-
-### Output (dry-run)
-
-```json
-{
-  "service": "billing",
-  "confirmed": false,
-  "contract_repo": "git@github.com:example/billing-contract.git",
-  "marketplace_repo": "git@github.com:example/marketplace.git",
-  "marketplace_name": "example-marketplace",
-  "would_push_files": [
-    ".claude-plugin/plugin.json",
-    "skills/billing/SKILL.md",
-    "domains/invoice.md",
-    "reference/contract.yaml"
-  ],
-  "would_run": [
-    "git push <contract-repo>",
-    "marketplace.json update + push",
-    "claude plugin marketplace update example-marketplace"
-  ],
-  "would_commit": [
-    "chore(contract): add smart-doc configuration",
-    "chore(contract): publish service contract for billing"
-  ]
-}
-```
-
-### Output (confirmed)
-
-```json
-{
-  "service": "billing",
-  "confirmed": true,
-  "contract_pushed": true,
-  "contract_sha": "abc1234",
-  "marketplace_pushed": true,
-  "marketplace_sha": "def5678",
-  "catalog_written": ".jkit/marketplace-catalog.json",
-  "commits": [
-    {"sha": "111aaa", "subject": "chore(contract): add smart-doc configuration"},
-    {"sha": "222bbb", "subject": "chore(contract): publish service contract for billing"}
-  ]
-}
-```
-
-### Edge cases
-
-| Case | Behavior |
-|---|---|
-| Contract repo not empty on first push | Refuse with `"contract repo must be empty for first push — auto-generated README will collide"` |
-| Marketplace repo missing | Exit 1; instruct the human to create it |
-| `claude plugin marketplace update` not on PATH | Exit 1; surface install instructions |
-| Contract push succeeds but marketplace push fails | Surface partial state in `blocking_errors`; do not run subsequent commits. Re-running with `--confirmed` should be idempotent. |
-| Two `chore(contract):` commits already on HEAD (re-run) | Skip both commits; surface `already_committed: true` |
-| `--no-commit` | Skip the commit step but still push |
-
-### Exit codes
-
-| Code | Meaning |
-|---|---|
-| 0 | Success (dry-run or confirmed) |
-| 1 | Missing `.jkit/contract.json`; missing stage dir; push failure; commit failure |
+See `docs/kit-contract-publish-prd.md` for the full spec.
 
 ---
 
@@ -352,9 +257,9 @@ If `jkit` already shells out to `git` for other subcommands, stay consistent —
 
 ---
 
-## Impact on pom-doctor
+## Impact on `jkit pom`
 
-Adds a new profile: `smart-doc` (insert smart-doc-maven-plugin under `<build><plugins>`). See updated entry in `docs/pom-doctor-prd.md`.
+Adds a new profile: `smart-doc` (insert smart-doc-maven-plugin under `<build><plugins>`). See updated entry in `docs/jkit-pom-prd.md`.
 
 ---
 
@@ -364,9 +269,9 @@ The following scripts under `bin/` become deprecated once `jkit contract` ships:
 
 | Script | Replaced by |
 |---|---|
-| `bin/contract-push.sh` | `jkit contract publish --confirmed` (push phase) |
-| `bin/marketplace-publish.sh` | `jkit contract publish --confirmed` (marketplace phase) |
-| `bin/marketplace-sync.sh` | `jkit contract publish --confirmed` (sync phase) |
+| `bin/contract-push.sh` | `kit contract publish --confirmed` (push phase) |
+| `bin/marketplace-publish.sh` | `kit contract publish --confirmed` (marketplace phase) |
+| `bin/marketplace-sync.sh` | `kit contract publish --confirmed` (sync phase) |
 
 Remove them once the binary is implemented and `publish-contract` is migrated, mirroring the `bin/pom-add.sh` removal in commit `2495380`.
 
@@ -380,7 +285,7 @@ Skill collapses from ~398 lines to ~110:
 - **Step 3 (controller path + scan)** + **Step 4 (Javadoc audit)** + **Step 5 (domain mapping)** → all consumed from service-meta JSON. Removes the manual codeskel index loop and the subjective Javadoc threshold.
 - **Step 6 (interview)** → presented as a drafted-answers gate (one prompt with all 7 drafts from `interview_drafts`) instead of seven sequential questions.
 - **Step 7 (smart-doc) + Step 8 (templates)** → `jkit contract stage`. Removes inline pom mutation, JSON merge logic, and ~80 lines of inlined SKILL.md / domain templates.
-- **Step 11 (push, marketplace, commits)** → `jkit contract publish --confirmed`. Removes the three bash scripts and the conditional-commit logic.
+- **Step 11 (push, marketplace, commits)** → `kit contract publish --confirmed`. Removes the three bash scripts and the conditional-commit logic.
 
 Skill responsibilities that remain in-prompt (judgment + gates):
 - Confirming the domain mapping (gate after service-meta).

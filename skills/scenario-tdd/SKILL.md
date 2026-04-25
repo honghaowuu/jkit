@@ -23,9 +23,9 @@ description: Use when implementing integration test scenarios identified as gaps
 ## Checklist
 
 - [ ] Load java-coding-standards
-- [ ] Run `scenarios prereqs --apply`
-- [ ] Run `scenarios gap --run <dir>`
-- [ ] Per gap: lightweight gate → `superpowers:test-driven-development` (or `scenarios skip`)
+- [ ] Run `jkit scenarios prereqs --apply`
+- [ ] Run `jkit scenarios gap --run <dir>`
+- [ ] Per gap: lightweight gate → `superpowers:test-driven-development` (or `kit scenarios skip`)
 - [ ] Invoke java-verify
 
 ## Process Flow
@@ -33,27 +33,27 @@ description: Use when implementing integration test scenarios identified as gaps
 ```dot
 digraph scenario_tdd {
     "Load java-coding-standards" [shape=box];
-    "scenarios prereqs --apply" [shape=box];
+    "jkit scenarios prereqs --apply" [shape=box];
     "Ready?" [shape=diamond];
     "Stop + report" [shape=box];
-    "scenarios gap --run <dir>" [shape=box];
+    "jkit scenarios gap --run <dir>" [shape=box];
     "Gaps?" [shape=diamond];
     "Done -> java-verify" [shape=doublecircle];
     "Lightweight gate" [shape=box];
-    "scenarios skip" [shape=box];
+    "kit scenarios skip" [shape=box];
     "TDD per scenario" [shape=box];
 
-    "Load java-coding-standards" -> "scenarios prereqs --apply";
-    "scenarios prereqs --apply" -> "Ready?";
-    "Ready?" -> "scenarios gap --run <dir>" [label="yes"];
+    "Load java-coding-standards" -> "jkit scenarios prereqs --apply";
+    "jkit scenarios prereqs --apply" -> "Ready?";
+    "Ready?" -> "jkit scenarios gap --run <dir>" [label="yes"];
     "Ready?" -> "Stop + report" [label="no"];
-    "scenarios gap --run <dir>" -> "Gaps?";
+    "jkit scenarios gap --run <dir>" -> "Gaps?";
     "Gaps?" -> "Done -> java-verify" [label="empty"];
     "Gaps?" -> "Lightweight gate" [label="entries"];
     "Lightweight gate" -> "TDD per scenario" [label="approve"];
-    "Lightweight gate" -> "scenarios skip" [label="skip"];
-    "scenarios skip" -> "scenarios gap --run <dir>";
-    "TDD per scenario" -> "scenarios gap --run <dir>";
+    "Lightweight gate" -> "kit scenarios skip" [label="skip"];
+    "kit scenarios skip" -> "jkit scenarios gap --run <dir>";
+    "TDD per scenario" -> "jkit scenarios gap --run <dir>";
 }
 ```
 
@@ -64,7 +64,7 @@ digraph scenario_tdd {
 **Step 1 — Prerequisites.**
 
 ```bash
-scenarios prereqs --apply
+jkit scenarios prereqs --apply
 ```
 
 Read the JSON. Announce non-empty `actions_taken`. Record `runtime` and `testing_strategy` for Step 3. If `ready: false` or `blocking_errors` is non-empty → stop and report verbatim (e.g. *"no container runtime found — install Docker or Podman and re-run"*).
@@ -72,7 +72,7 @@ Read the JSON. Announce non-empty `actions_taken`. Record `runtime` and `testing
 **Step 2 — Fetch gap work list.** The run directory is passed by `java-tdd`. If invoked ad-hoc without one → stop and ask the human for the run dir.
 
 ```bash
-scenarios gap --run <dir>
+jkit scenarios gap --run <dir>
 ```
 
 Output is the authoritative ordered work list. `[]` → no gaps; jump to Step 4.
@@ -84,11 +84,11 @@ Output is the authoritative ordered work list. `[]` → no gaps; jump to Step 4.
 > "Next: `<endpoint>` — `<id>`: `<description>`. Write this test?
 > A) Yes (recommended)  B) Edit scenario  C) Skip"
 
-- **Edit scenario:** human edits `test-scenarios.yaml`; re-run `scenarios gap --run <dir>` and resume.
+- **Edit scenario:** human edits `test-scenarios.yaml`; re-run `jkit scenarios gap --run <dir>` and resume.
 - **Skip:** record it, continue.
 
   ```bash
-  scenarios skip --run <dir> <domain> <id>
+  kit scenarios skip --run <dir> <domain> <id>
   ```
 
 - **Approve:** delegate the RED → GREEN cycle to `superpowers:test-driven-development`, scoped to:
@@ -117,6 +117,6 @@ JKIT_ENV=test direnv exec . mvn test -Dtest=<TestClass>#<methodName>
 - Test bug (compile error, wrong assertion) → fix the test only. Never edit production for a test bug.
 - Production failure on a correct assertion → fix production via `superpowers:systematic-debugging`.
 
-**Resume after interruption.** Re-run `scenarios gap --run <dir>`. Skipped + implemented entries are filtered automatically; the array head is the resume point. No git archaeology.
+**Resume after interruption.** Re-run `jkit scenarios gap --run <dir>`. Skipped + implemented entries are filtered automatically; the array head is the resume point. No git archaeology.
 
 **Step 4 — Invoke java-verify.** **REQUIRED SUB-SKILL** once `gap --run` returns `[]`. The commit belongs to `java-tdd`, not this skill.

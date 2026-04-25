@@ -1,7 +1,7 @@
-# jkit plugin-status — Product Requirements
+# kit plugin-status — Product Requirements
 
 **Version:** 1.0
-**Subcommand of:** `jkit`
+**Subcommand of:** `kit` (universal binary, used by every `*kit` language plugin)
 **Status:** proposed extension
 
 ---
@@ -17,7 +17,7 @@ A small subcommand that returns the install state of a Claude Code plugin (typic
 ## CLI
 
 ```
-jkit plugin-status <plugin-name>
+kit plugin-status <plugin-name>
 ```
 
 | Argument | Description |
@@ -110,6 +110,6 @@ pulldown-cmark = "0.12"   # parse SKILL.md for ## SDK block
 
 ## Impact on skills
 
-- **generate-feign Step 2** → `jkit plugin-status <service>`. Replaces the hand-wavy "check whether `/{service-name}` skill is available" with a deterministic call. Returns `contract_yaml_path` for OpenAPI input and `sdk` for the early SDK opt-in.
+- **generate-feign Step 2** → `kit plugin-status <service>`. Replaces the hand-wavy "check whether `/{service-name}` skill is available" with a deterministic call. Returns `contract_yaml_path` for OpenAPI input and `sdk` for the early SDK opt-in.
 
 Future contract-consuming skills (any skill that reads a published contract) can use the same subcommand for installation gating.

@@ -12,10 +12,10 @@ Quality gates are non-negotiable. If Spotless / PMD / SpotBugs / JaCoCo are not 
 ## Checklist
 
 - [ ] Load java-coding-standards
-- [ ] `pom-doctor prereqs --profile quality --apply`
+- [ ] `jkit pom prereqs --profile quality --apply`
 - [ ] `mvn spotless:apply` (auto-fix formatting before verify)
 - [ ] `mvn verify` — classify failures, fix at root, repeat (max 3 attempts)
-- [ ] Coverage check via `jacoco-filter`
+- [ ] Coverage check via `jkit coverage`
 - [ ] Invoke `superpowers:requesting-code-review`
 
 ## Process Flow
@@ -23,20 +23,20 @@ Quality gates are non-negotiable. If Spotless / PMD / SpotBugs / JaCoCo are not 
 ```dot
 digraph java_verify {
     "Load java-coding-standards" [shape=box];
-    "pom-doctor --profile quality --apply" [shape=box];
+    "jkit pom --profile quality --apply" [shape=box];
     "mvn spotless:apply + git add -u" [shape=box];
     "mvn verify" [shape=box];
     "Failure?" [shape=diamond];
     "Classify" [shape=box];
     "Spotless violation -> re-apply" [shape=box];
     "Test/compile/PMD/SpotBugs -> fix at root" [shape=box];
-    "jacoco-filter (merged report)" [shape=box];
+    "jkit coverage (merged report)" [shape=box];
     "Coverage gaps?" [shape=diamond];
     "Ask: fix now or note for review" [shape=box];
     "superpowers:requesting-code-review" [shape=doublecircle];
 
-    "Load java-coding-standards" -> "pom-doctor --profile quality --apply";
-    "pom-doctor --profile quality --apply" -> "mvn spotless:apply + git add -u";
+    "Load java-coding-standards" -> "jkit pom --profile quality --apply";
+    "jkit pom --profile quality --apply" -> "mvn spotless:apply + git add -u";
     "mvn spotless:apply + git add -u" -> "mvn verify";
     "mvn verify" -> "Failure?";
     "Failure?" -> "Classify" [label="yes"];
@@ -44,8 +44,8 @@ digraph java_verify {
     "Classify" -> "Test/compile/PMD/SpotBugs -> fix at root" [label="other"];
     "Spotless violation -> re-apply" -> "mvn verify";
     "Test/compile/PMD/SpotBugs -> fix at root" -> "mvn verify";
-    "Failure?" -> "jacoco-filter (merged report)" [label="no"];
-    "jacoco-filter (merged report)" -> "Coverage gaps?";
+    "Failure?" -> "jkit coverage (merged report)" [label="no"];
+    "jkit coverage (merged report)" -> "Coverage gaps?";
     "Coverage gaps?" -> "Ask: fix now or note for review" [label="yes"];
     "Coverage gaps?" -> "superpowers:requesting-code-review" [label="no"];
     "Ask: fix now or note for review" -> "superpowers:requesting-code-review";
@@ -59,12 +59,12 @@ digraph java_verify {
 **Step 1 — Quality plugin prerequisites.**
 
 ```bash
-pom-doctor prereqs --profile quality --apply
+jkit pom prereqs --profile quality --apply
 ```
 
 Installs Spotless, PMD, SpotBugs if missing. Announce non-empty `actions_taken`. If `ready: false` or `blocking_errors` is non-empty → stop and report.
 
-If JaCoCo is also missing (rare at this point — `java-tdd` Step 3 should have installed it): also run `pom-doctor prereqs --profile jacoco --apply`.
+If JaCoCo is also missing (rare at this point — `java-tdd` Step 3 should have installed it): also run `jkit pom prereqs --profile jacoco --apply`.
 
 **Step 2 — Auto-fix formatting.**
 
@@ -98,10 +98,10 @@ Repeat until green. Max 3 fix attempts; if still failing, stop and report the ro
 **Step 4 — Coverage check.**
 
 ```bash
-jacoco-filter target/site/jacoco/jacoco.xml --summary --min-score 1.0
+jkit coverage target/site/jacoco/jacoco.xml --summary --min-score 1.0
 ```
 
-(Run `jacoco-filter --help` for the output schema.)
+(Run `jkit coverage --help` for the output schema.)
 
 `methods[]` non-empty → coverage gaps remain. Ask:
 

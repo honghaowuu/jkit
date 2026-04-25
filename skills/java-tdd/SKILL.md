@@ -21,9 +21,9 @@ description: Use when implementing any Java feature or bugfix via test-driven de
 ## Checklist
 
 - [ ] Load java-coding-standards
-- [ ] Run `jkit plan-status` (route by `recommendation`)
+- [ ] Run `kit plan-status` (route by `recommendation`)
 - [ ] Choose execution mode (plan-driven only)
-- [ ] Run `pom-doctor prereqs --profile jacoco --apply`
+- [ ] Run `jkit pom prereqs --profile jacoco --apply`
 - [ ] Implement per Step 2 mode (subagent-driven / inline / ad-hoc)
 - [ ] Compile check after each task (mode 1: inside subagent spec; mode 2 / ad-hoc: parent flow; max 3 retries)
 - [ ] Coverage loop with `--iteration-state` until `should_stop: true`
@@ -35,37 +35,37 @@ description: Use when implementing any Java feature or bugfix via test-driven de
 ```dot
 digraph java_tdd {
     "Load java-coding-standards" [shape=box];
-    "jkit plan-status" [shape=box];
+    "kit plan-status" [shape=box];
     "Recommendation?" [shape=diamond];
     "Stop + report" [shape=box];
     "Ask execution mode" [shape=box];
-    "pom-doctor --profile jacoco --apply" [shape=box];
+    "jkit pom --profile jacoco --apply" [shape=box];
     "Mode?" [shape=diamond];
     "subagent-driven-development" [shape=box];
     "executing-plans (inline TDD + compile)" [shape=box];
     "TDD on described change + compile" [shape=box];
-    "Coverage loop (jacoco-filter --iteration-state)" [shape=box];
+    "Coverage loop (jkit coverage --iteration-state)" [shape=box];
     "should_stop?" [shape=diamond];
     "TDD per gap method" [shape=box];
     "Invoke scenario-tdd" [shape=doublecircle];
     "Final commit" [shape=doublecircle];
 
-    "Load java-coding-standards" -> "jkit plan-status";
-    "jkit plan-status" -> "Recommendation?";
+    "Load java-coding-standards" -> "kit plan-status";
+    "kit plan-status" -> "Recommendation?";
     "Recommendation?" -> "Ask execution mode" [label="implement_from_plan"];
-    "Recommendation?" -> "pom-doctor --profile jacoco --apply" [label="no_plan (ad-hoc)"];
+    "Recommendation?" -> "jkit pom --profile jacoco --apply" [label="no_plan (ad-hoc)"];
     "Recommendation?" -> "Stop + report" [label="already_synced"];
-    "Ask execution mode" -> "pom-doctor --profile jacoco --apply";
-    "pom-doctor --profile jacoco --apply" -> "Mode?";
+    "Ask execution mode" -> "jkit pom --profile jacoco --apply";
+    "jkit pom --profile jacoco --apply" -> "Mode?";
     "Mode?" -> "subagent-driven-development" [label="plan + mode 1"];
     "Mode?" -> "executing-plans (inline TDD + compile)" [label="plan + mode 2"];
     "Mode?" -> "TDD on described change + compile" [label="ad-hoc"];
-    "subagent-driven-development" -> "Coverage loop (jacoco-filter --iteration-state)";
-    "executing-plans (inline TDD + compile)" -> "Coverage loop (jacoco-filter --iteration-state)";
-    "TDD on described change + compile" -> "Coverage loop (jacoco-filter --iteration-state)";
-    "Coverage loop (jacoco-filter --iteration-state)" -> "should_stop?";
+    "subagent-driven-development" -> "Coverage loop (jkit coverage --iteration-state)";
+    "executing-plans (inline TDD + compile)" -> "Coverage loop (jkit coverage --iteration-state)";
+    "TDD on described change + compile" -> "Coverage loop (jkit coverage --iteration-state)";
+    "Coverage loop (jkit coverage --iteration-state)" -> "should_stop?";
     "should_stop?" -> "TDD per gap method" [label="false"];
-    "TDD per gap method" -> "Coverage loop (jacoco-filter --iteration-state)";
+    "TDD per gap method" -> "Coverage loop (jkit coverage --iteration-state)";
     "should_stop?" -> "Invoke scenario-tdd" [label="true"];
     "Invoke scenario-tdd" -> "Final commit";
 }
@@ -78,7 +78,7 @@ digraph java_tdd {
 **Step 1 — Plan status.**
 
 ```bash
-jkit plan-status
+kit plan-status
 ```
 
 Route by `recommendation`:
@@ -106,7 +106,7 @@ Subagent model selection (mode 1 only):
 **Step 3 — Prerequisites.**
 
 ```bash
-pom-doctor prereqs --profile jacoco --apply
+jkit pom prereqs --profile jacoco --apply
 ```
 
 Announce non-empty `actions_taken`. If `ready: false` or `blocking_errors` is non-empty → stop and report.
@@ -129,7 +129,7 @@ On failure: analyze, fix generated code, retry. Max 3 attempts. If still failing
 
 ```bash
 mvn clean test jacoco:report
-jacoco-filter target/site/jacoco/jacoco.xml --summary --min-score 1.0 \
+jkit coverage target/site/jacoco/jacoco.xml --summary --min-score 1.0 \
   --iteration-state <run>/coverage-state.json
 ```
 
@@ -141,7 +141,7 @@ For each entry in `methods[]` (in order), invoke `superpowers:test-driven-develo
 
 Stop when `should_stop: true` (plateau detected). Report residual gaps from the last `methods[]` output — further iteration will not improve coverage (e.g. private utility constructors, unreachable defensive branches).
 
-**Step 6 — Invoke scenario-tdd.** **REQUIRED SUB-SKILL** once Step 5 stops. Pass the run directory — scenario-tdd reads affected domains from `change-summary.md` and runs `scenarios gap --run <dir>` itself. scenario-tdd invokes `java-verify` when done.
+**Step 6 — Invoke scenario-tdd.** **REQUIRED SUB-SKILL** once Step 5 stops. Pass the run directory — scenario-tdd reads affected domains from `change-summary.md` and runs `jkit scenarios gap --run <dir>` itself. scenario-tdd invokes `java-verify` when done.
 
 **Step 7 — Final commit.** Commit message MUST use one of:
 

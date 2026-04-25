@@ -21,7 +21,7 @@ Generated Feign clients are **regenerable artefacts, not source**. Never hand-ed
 ## Checklist
 
 - [ ] Identify target service from task context
-- [ ] `jkit plugin-status <service>` → confirm install + read SDK / contract path
+- [ ] `kit plugin-status <service>` → confirm install + read SDK / contract path
 - [ ] If SDK present: offer SDK and short-circuit (gate)
 - [ ] Determine generation scope (full / scoped — confirm with human if ambiguous)
 - [ ] Run `openapi-generator-cli` with Feign template
@@ -34,25 +34,25 @@ Generated Feign clients are **regenerable artefacts, not source**. Never hand-ed
 ```dot
 digraph generate_feign {
     "Identify target service" [shape=box];
-    "jkit plugin-status <service>" [shape=box];
+    "kit plugin-status <service>" [shape=box];
     "installed?" [shape=diamond];
     "Offer install-contracts" [shape=box];
     "SDK present?" [shape=diamond];
     "Offer SDK (gate)" [shape=box];
-    "pom-doctor add-dep (SDK)" [shape=doublecircle];
+    "jkit pom add-dep (SDK)" [shape=doublecircle];
     "Determine scope" [shape=box];
     "openapi-generator-cli generate" [shape=box];
     "Post-process: move + dedupe" [shape=box];
     "Write WireMock test scaffold" [shape=box];
     "git add generated tree" [shape=doublecircle];
 
-    "Identify target service" -> "jkit plugin-status <service>";
-    "jkit plugin-status <service>" -> "installed?";
+    "Identify target service" -> "kit plugin-status <service>";
+    "kit plugin-status <service>" -> "installed?";
     "installed?" -> "Offer install-contracts" [label="no"];
-    "Offer install-contracts" -> "jkit plugin-status <service>";
+    "Offer install-contracts" -> "kit plugin-status <service>";
     "installed?" -> "SDK present?" [label="yes"];
     "SDK present?" -> "Offer SDK (gate)" [label="yes"];
-    "Offer SDK (gate)" -> "pom-doctor add-dep (SDK)" [label="accept SDK"];
+    "Offer SDK (gate)" -> "jkit pom add-dep (SDK)" [label="accept SDK"];
     "Offer SDK (gate)" -> "Determine scope" [label="generate anyway"];
     "SDK present?" -> "Determine scope" [label="no"];
     "Determine scope" -> "openapi-generator-cli generate";
@@ -69,7 +69,7 @@ digraph generate_feign {
 **Step 1 — Plugin status.**
 
 ```bash
-jkit plugin-status <service>
+kit plugin-status <service>
 ```
 
 Read the JSON. Branch:
@@ -79,7 +79,7 @@ Read the JSON. Branch:
   > A) Run `bin/install-contracts.sh` now (recommended)
   > B) Abort"
 
-  On A: run the script, re-run `jkit plugin-status`. On B: stop.
+  On A: run the script, re-run `kit plugin-status`. On B: stop.
 - `installed: true, contract_yaml_path: null` → stop and report (`"plugin installed but reference/contract.yaml missing — contract was published incomplete"`).
 - `installed: true, contract_yaml_path: <path>` → continue. Note `sdk` for Step 2.
 
@@ -92,7 +92,7 @@ Read the JSON. Branch:
 On A:
 
 ```bash
-pom-doctor add-dep \
+jkit pom add-dep \
   --group-id <group_id> --artifact-id <artifact_id> --version <version> \
   --apply
 ```
@@ -159,7 +159,7 @@ Failure → surface the last 20 lines of the tool's output and stop.
 
 ```bash
 git add src/main/java/<group-path>/feign/ src/test/java/<group-path>/feign/
-git add pom.xml   # only if pom-doctor was invoked in Step 2 (rare — Step 2's "use SDK" path stops the skill)
+git add pom.xml   # only if jkit pom was invoked in Step 2 (rare — Step 2's "use SDK" path stops the skill)
 ```
 
 Announce the file list. The caller commits.

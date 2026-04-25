@@ -1,19 +1,19 @@
-# jacoco-filter — Extension PRD
+# jkit coverage — Product Requirements
 
 **Version:** 1.1
+**Subcommand of:** `jkit` (Java-specific binary)
 **Language:** Rust
-**Binary name:** `jacoco-filter`
-**Status:** proposed extension to existing v1.0 binary
+**Status:** proposed (replaces the previously-standalone `jacoco-filter` v1.0 binary; folded into `jkit` for one-binary-per-language consistency)
 
 ---
 
 ## Background
 
-`jacoco-filter` v1.0 reads a JaCoCo XML report and emits a ranked list of methods with coverage gaps. It's invoked from `java-tdd` Step 5 to drive the unit-test coverage loop.
+The previous `jacoco-filter` v1.0 binary read a JaCoCo XML report and emitted a ranked list of methods with coverage gaps. It was invoked from `java-tdd` Step 5 to drive the unit-test coverage loop. This PRD describes its v1.1 reincarnation as the `jkit coverage` subcommand.
 
 v1.1 adds **iteration state tracking (`--iteration-state` flag)** — detect when the coverage-fill loop has plateaued. Currently a model bookkeeping task ("if two consecutive passes produce no decrease in missed lines, stop") that drifts.
 
-**Note on plugin bootstrap.** An earlier draft of v1.1 also included a `prereqs` subcommand for installing the JaCoCo Maven plugin in `pom.xml`. That responsibility moved to the unified `pom-doctor` binary (see `docs/pom-doctor-prd.md`) so all pom mutations across the pipeline go through one schema and template set. Callers needing the plugin installed invoke `pom-doctor prereqs --profile jacoco --apply` directly.
+**Note on plugin bootstrap.** An earlier draft of v1.1 also included a `prereqs` subcommand for installing the JaCoCo Maven plugin in `pom.xml`. That responsibility moved to the unified `jkit pom` subcommand (see `docs/jkit-pom-prd.md`) so all pom mutations across the pipeline go through one schema and template set. Callers needing the plugin installed invoke `jkit pom prereqs --profile jacoco --apply` directly.
 
 **Design principle (carried from v1.0):** structured input, structured output. `--iteration-state` augments existing output with plateau-detection fields.
 
@@ -24,7 +24,7 @@ v1.1 adds **iteration state tracking (`--iteration-state` flag)** — detect whe
 ### New flag on existing call: `--iteration-state`
 
 ```
-jacoco-filter <jacoco.xml> [--summary] [--min-score <f>] [--top-k <n>] [--iteration-state <path>]
+jkit coverage <jacoco.xml> [--summary] [--min-score <f>] [--top-k <n>] [--iteration-state <path>]
 ```
 
 Without the flag, behavior is unchanged from v1.0.
@@ -121,6 +121,6 @@ If v1.0 already depends on `serde_json` and `serde`, no further additions for st
 
 ## Impact on java-tdd
 
-- **Step 5 iteration bound** → add `--iteration-state .jkit/<run>/coverage-state.json` to the existing `jacoco-filter` call. The skill rule collapses from "if two consecutive passes produce no decrease in missed lines, stop" to "if `should_stop: true`, stop." Accuracy win on plateau detection (most prone to model drift).
+- **Step 5 iteration bound** → add `--iteration-state .jkit/<run>/coverage-state.json` to the `jkit coverage` call. The skill rule collapses from "if two consecutive passes produce no decrease in missed lines, stop" to "if `should_stop: true`, stop." Accuracy win on plateau detection (most prone to model drift).
 
-(Step 3 prerequisites — JaCoCo plugin install — moved to `pom-doctor prereqs --profile jacoco --apply`. See `docs/pom-doctor-prd.md`.)
+(Step 3 prerequisites — JaCoCo plugin install — moved to `jkit pom prereqs --profile jacoco --apply`. See `docs/jkit-pom-prd.md`.)

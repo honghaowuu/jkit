@@ -70,7 +70,7 @@ Guides authoring of Liquibase or Flyway migrations aligned with the current spec
 
 **`bin/install-contracts.sh`** installs upstream service contract plugins listed in `.claude/settings.json` as Claude plugin dependencies, making their skills and domain docs available locally.
 
-Pom-fragment installation is now handled by the `pom-doctor` binary (see `docs/pom-doctor-prd.md`). The previous `bin/pom-add.sh` shell script has been removed.
+Pom-fragment installation is now handled by the `jkit pom` subcommand (see `docs/jkit-pom-prd.md`). The previous `bin/pom-add.sh` shell script has been removed.
 
 ---
 
