@@ -74,6 +74,19 @@ Pom-fragment installation is now handled by the `pom-doctor` binary (see `docs/p
 
 ---
 
+## External tooling
+
+Some skills shell out to third-party tools that must be on `PATH`:
+
+| Tool | Used by | Install |
+|---|---|---|
+| `openapi-generator-cli` | `generate-feign` (OpenAPI → Feign Java client) | `npm i -g @openapitools/openapi-generator-cli` or `brew install openapi-generator` |
+| `mvn` | `java-tdd`, `java-verify`, `scenario-tdd`, `publish-contract` (smart-doc) | Standard Maven distribution |
+| `docker compose` / `podman compose` | `scenario-tdd` (Spring Boot < 3.1 integration tests) | Docker Desktop, Docker Engine, or Podman |
+| `psql` (or other DB client) | `sql-migration` (live-schema introspection) | `brew install postgresql` / distro package |
+
+---
+
 ## CLI reference
 
 ### Subcommands
