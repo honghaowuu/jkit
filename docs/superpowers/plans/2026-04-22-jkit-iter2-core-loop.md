@@ -651,7 +651,7 @@ No exceptions:
 
 ## Checklist
 
-- [ ] Load java-coding-standards
+- [ ] Load standards (jkit standards list)
 - [ ] Detect plan (latest spec-delta run)
 - [ ] Choose execution mode
 - [ ] Verify JaCoCo plugin
@@ -668,7 +668,7 @@ No exceptions:
 
 ```dot
 digraph java_tdd {
-    "Load java-coding-standards" [shape=box];
+    "Load standards (jkit standards list)" [shape=box];
     "Detect plan?" [shape=diamond];
     "Ask execution mode" [shape=box];
     "Verify JaCoCo" [shape=box];
@@ -681,7 +681,7 @@ digraph java_tdd {
     "More tasks?" [shape=diamond];
     "Invoke scenario-tdd" [shape=doublecircle];
 
-    "Load java-coding-standards" -> "Detect plan?";
+    "Load standards (jkit standards list)" -> "Detect plan?";
     "Detect plan?" -> "Ask execution mode" [label="plan found"];
     "Detect plan?" -> "Verify JaCoCo" [label="ad-hoc"];
     "Ask execution mode" -> "Verify JaCoCo";
@@ -700,9 +700,9 @@ digraph java_tdd {
 
 ## Detailed Flow
 
-**Step 0: Load java-coding-standards**
+**Step 0: Load standards**
 
-Read `<plugin-root>/docs/java-coding-standards.md`. Apply all rules throughout.
+Run `jkit standards list` and read every file it prints. Apply all rules throughout.
 
 **Step 1: Plan detection**
 

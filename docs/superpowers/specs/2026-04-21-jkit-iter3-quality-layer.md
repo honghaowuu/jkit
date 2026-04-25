@@ -73,7 +73,7 @@ No exceptions:
 
 ### Checklist
 
-- [ ] Load java-coding-standards
+- [ ] Load standards (jkit standards list)
 - [ ] Detect Spring Boot version + prerequisites
 - [ ] Read scenario gaps from change-summary.md
 - [ ] TDD loop: per gap scenario
@@ -83,7 +83,7 @@ No exceptions:
 
 ```dot
 digraph scenario_tdd {
-    "Load java-coding-standards" [shape=box];
+    "Load standards (jkit standards list)" [shape=box];
     "Detect SB version\n+ prerequisites" [shape=box];
     "Read scenario gaps\nfrom change-summary.md" [shape=box];
     "Gaps to implement?" [shape=diamond];
@@ -96,7 +96,7 @@ digraph scenario_tdd {
     "Fix until GREEN" [shape=box];
     "More gaps?" [shape=diamond];
 
-    "Load java-coding-standards" -> "Detect SB version\n+ prerequisites";
+    "Load standards (jkit standards list)" -> "Detect SB version\n+ prerequisites";
     "Detect SB version\n+ prerequisites" -> "Read scenario gaps\nfrom change-summary.md";
     "Read scenario gaps\nfrom change-summary.md" -> "Gaps to implement?";
     "Gaps to implement?" -> "Done → invoke java-verify" [label="none"];
@@ -116,9 +116,9 @@ digraph scenario_tdd {
 
 ### Detailed Flow
 
-**Step 0: Load java-coding-standards**
+**Step 0: Load standards**
 
-Read `<plugin-root>/docs/java-coding-standards.md`. Apply all rules.
+Run `jkit standards list` and read every file it prints. Apply all rules.
 
 **Step 1: Detect Spring Boot version + prerequisites**
 
@@ -238,7 +238,7 @@ description: Use when verifying all quality gates and coverage after scenario-td
 
 ### Checklist
 
-- [ ] Load java-coding-standards
+- [ ] Load standards (jkit standards list)
 - [ ] Ensure quality plugins
 - [ ] Run mvn verify
 - [ ] Check merged JaCoCo coverage
@@ -250,7 +250,7 @@ description: Use when verifying all quality gates and coverage after scenario-td
 
 ```dot
 digraph java_verify {
-    "Load java-coding-standards" [shape=box];
+    "Load standards (jkit standards list)" [shape=box];
     "Ensure quality plugins\n(Checkstyle/PMD/SpotBugs)" [shape=box];
     "mvn verify" [shape=box];
     "jkit coverage (merged jacoco)\njkit coverage --api" [shape=box];
@@ -260,7 +260,7 @@ digraph java_verify {
     "Ask: fix now or note for review" [shape=box];
     "superpowers:requesting-code-review" [shape=doublecircle];
 
-    "Load java-coding-standards" -> "Ensure quality plugins\n(Checkstyle/PMD/SpotBugs)";
+    "Load standards (jkit standards list)" -> "Ensure quality plugins\n(Checkstyle/PMD/SpotBugs)";
     "Ensure quality plugins\n(Checkstyle/PMD/SpotBugs)" -> "mvn verify";
     "mvn verify" -> "jkit coverage (merged jacoco)\njkit coverage --api";
     "jkit coverage (merged jacoco)\njkit coverage --api" -> "Failures?";
@@ -275,9 +275,9 @@ digraph java_verify {
 
 ### Detailed Flow
 
-**Step 0: Load java-coding-standards**
+**Step 0: Load standards**
 
-Read `<plugin-root>/docs/java-coding-standards.md`. Apply all rules.
+Run `jkit standards list` and read every file it prints. Apply all rules.
 
 **Step 1: Ensure quality plugins**
 
