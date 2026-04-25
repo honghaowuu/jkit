@@ -34,6 +34,24 @@ for b in jkit kit codeskel; do
   fi
 done
 
+# 3b. Install openapi-generator-cli wrapper if missing (used by /generate-feign).
+# Wrapper is a small bash script; downloads the JAR on first invocation. Requires
+# Java at invocation time, not install time.
+if ! command -v openapi-generator-cli &>/dev/null; then
+  echo "jkit: openapi-generator-cli not found — installing wrapper to ~/.local/bin/..." >&2
+  mkdir -p "${HOME}/.local/bin"
+  if curl -sfL https://raw.githubusercontent.com/OpenAPITools/openapi-generator/master/bin/utils/openapi-generator-cli.sh \
+       -o "${HOME}/.local/bin/openapi-generator-cli" 2>/dev/null; then
+    chmod +x "${HOME}/.local/bin/openapi-generator-cli"
+    case ":${PATH}:" in
+      *":${HOME}/.local/bin:"*) ;;
+      *) echo "jkit: ~/.local/bin is not on PATH — add it to your shell profile so openapi-generator-cli resolves." >&2 ;;
+    esac
+  else
+    echo "jkit: openapi-generator-cli install failed. Install manually: 'npm i -g @openapitools/openapi-generator-cli' or 'brew install openapi-generator'" >&2
+  fi
+fi
+
 # 4. Conditional context injection.
 # A project is jkit-managed iff it tracks pending change descriptions under
 # docs/changes/. If absent but the project looks Java-y (pom.xml present),

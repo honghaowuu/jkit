@@ -107,14 +107,7 @@ On B: continue to Step 3. Record the human's reason for skipping the SDK in the 
 > A) Full client (recommended unless the contract is large)
 > B) Scoped — give me a path prefix (e.g. `/invoices`) or a tag"
 
-**Step 4 — Generate.** Use `openapi-generator-cli` with the `java` generator and `feign` library. Confirm the tool is on PATH:
-
-```bash
-command -v openapi-generator-cli >/dev/null \
-  || { echo "openapi-generator-cli not installed; install via 'npm i -g @openapitools/openapi-generator-cli' or brew"; exit 1; }
-```
-
-Run:
+**Step 4 — Generate.** Use `openapi-generator-cli` with the `java` generator and `feign` library (the jkit session-start hook ensures it's installed). Run:
 
 ```bash
 openapi-generator-cli generate \
