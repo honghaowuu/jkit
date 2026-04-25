@@ -22,12 +22,28 @@ A deterministic CLI that owns **all** `pom.xml` mutations for the jkit pipeline.
 
 ```
 pom-doctor prereqs --profile <profile> [--apply] [--pom <path>]
+pom-doctor add-dep --group-id <gid> --artifact-id <aid> --version <ver> [--scope <scope>] [--apply] [--pom <path>]
 ```
+
+### `prereqs` — static-profile installation
 
 | Argument | Default | Description |
 |---|---|---|
 | `--profile <profile>` | required | One of: `testcontainers`, `compose`, `jacoco`, `quality`, `smart-doc` |
 | `--apply` | false | Without it: report state, mutate nothing. With it: install missing fragments. |
+| `--pom <path>` | `pom.xml` (cwd) | Path to the Maven project file |
+
+### `add-dep` — dynamic single-dependency add
+
+For deps that aren't part of a fixed profile (e.g. an SDK chosen at runtime by a skill).
+
+| Argument | Default | Description |
+|---|---|---|
+| `--group-id <gid>` | required | Maven groupId |
+| `--artifact-id <aid>` | required | Maven artifactId |
+| `--version <ver>` | required | Maven version |
+| `--scope <scope>` | (omitted from pom) | Maven scope (`compile`, `test`, `provided`, etc.) |
+| `--apply` | false | Without it: report state. With it: insert into `<dependencies>`. |
 | `--pom <path>` | `pom.xml` (cwd) | Path to the Maven project file |
 
 ---
@@ -48,7 +64,7 @@ Each profile names a pom-fragment bundle the binary knows about. Templates are c
 
 ---
 
-## Algorithm
+## Algorithm — `prereqs`
 
 1. Read `pom.xml` (path from `--pom`, default cwd). Parse error → exit 1.
 2. Resolve the profile to its fragment list. Unknown profile → exit 1 with valid choices.
@@ -60,6 +76,18 @@ Each profile names a pom-fragment bundle the binary knows about. Templates are c
 4. Emit JSON.
 
 Indentation: detect from the existing pom (most common indent unit in the document) and match. Default to 4 spaces if undetectable.
+
+## Algorithm — `add-dep`
+
+1. Read `pom.xml`. Parse error → exit 1.
+2. Locate `<dependencies>`. Missing under `--apply`: create directly under `<project>`. Missing in dry-run: report as `dependencies_section_missing` and continue.
+3. Search for an existing dep matching `groupId + artifactId`:
+   - Same version → record `present: true`, `action: "skipped"`.
+   - **Different version** → record `present: true`, `action: "version_mismatch"`, surface in `warnings`. **Never modify** — existing config is authoritative.
+   - Absent → record `present: false`. Under `--apply`, insert a new `<dependency>` block with the supplied groupId/artifactId/version (and `<scope>` if `--scope` is set) and record in `actions_taken`.
+4. Emit JSON.
+
+Output uses the same shape as `prereqs` output but with a single-fragment `fragments[]` entry. The `--scope` value, if provided, is included in the inserted fragment verbatim.
 
 ---
 
@@ -93,17 +121,18 @@ Single JSON object to stdout:
 
 ---
 
-## Edge cases
+## Edge cases (apply to both modes)
 
 | Case | Behavior |
 |---|---|
 | `pom.xml` missing | Exit 1 |
-| `pom.xml` has no `<build>` and profile is jacoco/quality | `--apply`: create `<build><plugins>`, insert. Dry-run: report as missing. |
-| `pom.xml` has no `<dependencies>` and profile is testcontainers/compose | Same — create under `--apply`, list as missing in dry-run. |
-| Plugin/dep present with non-default config (version override, executions) | Treat as present; never modify existing config |
+| `pom.xml` has no `<build>` and profile is jacoco/quality/smart-doc | `--apply`: create `<build><plugins>`, insert. Dry-run: report as missing. |
+| `pom.xml` has no `<dependencies>` (any dep insertion) | Same — create under `--apply`, list as missing in dry-run. |
+| Plugin/dep present with non-default config (version override, executions, scope) | Treat as present; never modify existing config. `add-dep` with version mismatch surfaces in `warnings`. |
 | Multi-module pom (parent with `<modules>`) | Operate only on the file passed to `--pom`; warn to stderr `"multi-module project — verify this is the right pom"` |
 | `--apply` write fails (permissions, FS full) | Exit 1 with error |
 | Unknown `--profile` | Exit 1 with list of valid profiles |
+| `add-dep` with empty groupId/artifactId/version | Exit 1 |
 | Pom uses tabs vs spaces | Match the dominant style in the original |
 
 ---
@@ -159,5 +188,7 @@ The previous shell-based pom mutator was deleted alongside this PRD landing. Qua
 - **java-tdd Step 3** → `pom-doctor prereqs --profile jacoco --apply`.
 - **java-verify Step 1** → `pom-doctor prereqs --profile quality --apply`.
 - **scenario-tdd Step 1** → unchanged at the skill level (continues to call `scenarios prereqs`); the orchestration shift is internal to scenarios.
+- **publish-contract Step 5 (stage)** → `pom-doctor prereqs --profile smart-doc --apply` (delegated by `jkit contract stage`).
+- **generate-feign SDK opt-in** → `pom-doctor add-dep --group-id ... --artifact-id ... --version ... --apply`.
 
 Net architectural effect: every pom-mutation point in the pipeline goes through one binary, one schema, one bundled-template set, one error model.

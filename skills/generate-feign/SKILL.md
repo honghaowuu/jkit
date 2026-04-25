@@ -3,118 +3,167 @@ name: generate-feign
 description: Use when you need to generate a Feign client for an upstream microservice. Requires the service's contract plugin to be installed.
 ---
 
-**Announcement:** At start: *"I'm using the generate-feign skill to generate a Feign client from the {service-name} contract."*
+**Announcement:** At start: *"I'm using the generate-feign skill to generate a Feign client from the {service} contract."*
+
+## Iron Law
+
+Generated Feign clients are **regenerable artefacts, not source**. Never hand-edit a generated client — re-running this skill clobbers it. If the output is wrong: fix the upstream contract, fix the generation flags, or pin the contract version. Hand edits will be lost.
+
+## Rationalization Table
+
+| Excuse | Reality |
+|--------|---------|
+| "I'll just tweak the generated client by hand" | Lost on next regen. Patch the contract or the generator config instead. |
+| "Skip the SDK check — generate the Feign client anyway" | If the upstream ships an SDK, you're now maintaining a parallel client that will drift from theirs. Use the SDK. |
+| "Re-generation will be fine, the diff will be small" | Re-generation is silent overwrite. There's no merge step. Treat the file as untouchable post-generation. |
+| "Auth interceptor isn't part of the contract — skip it" | The generated client won't talk to a secured upstream. Wire the interceptor in the same go. |
 
 ## Checklist
 
 - [ ] Identify target service from task context
-- [ ] Confirm contract plugin is installed (`/{service-name}` skill available)
-- [ ] Invoke `/{service-name}` skill to navigate to the right API (levels 1→4)
-- [ ] Check SKILL.md for `## SDK` section — if present, offer SDK dependency instead of generating
-- [ ] Read `reference/contract.yaml` for the target path(s)
-- [ ] Determine generation scope — if not clear from task context, ask: full client or scoped to specific paths/tags?
-- [ ] Generate Feign client in `feign/` package
-- [ ] Write integration test scaffold
+- [ ] `jkit plugin-status <service>` → confirm install + read SDK / contract path
+- [ ] If SDK present: offer SDK and short-circuit (gate)
+- [ ] Determine generation scope (full / scoped — confirm with human if ambiguous)
+- [ ] Run `openapi-generator-cli` with Feign template
+- [ ] Post-process for project conventions (move into `feign/`, dedupe DTOs)
+- [ ] Write WireMock-based integration test scaffold (RED-by-default)
+- [ ] `git add` the generated tree
 
 ## Process Flow
 
 ```dot
 digraph generate_feign {
-    "Identify target service\nfrom task context" [shape=box];
-    "Contract plugin installed?" [shape=diamond];
-    "Offer: run bin/install-contracts.sh now?" [shape=box];
-    "Invoke /{service-name} skill\nnavigate to right API" [shape=box];
-    "SDK declared in SKILL.md?" [shape=diamond];
-    "Offer: use SDK dependency\ninstead of generating" [shape=box];
-    "Human chooses SDK?" [shape=diamond];
-    "Add SDK to pom.xml\nskip generation" [shape=doublecircle];
-    "Determine scope\n(full or scoped)" [shape=diamond];
-    "Ask: full or scoped?" [shape=box];
-    "Read reference/contract.yaml\nfor target paths" [shape=box];
-    "Generate Feign client\nin feign/ package" [shape=box];
-    "Write integration test scaffold" [shape=doublecircle];
+    "Identify target service" [shape=box];
+    "jkit plugin-status <service>" [shape=box];
+    "installed?" [shape=diamond];
+    "Offer install-contracts" [shape=box];
+    "SDK present?" [shape=diamond];
+    "Offer SDK (gate)" [shape=box];
+    "pom-doctor add-dep (SDK)" [shape=doublecircle];
+    "Determine scope" [shape=box];
+    "openapi-generator-cli generate" [shape=box];
+    "Post-process: move + dedupe" [shape=box];
+    "Write WireMock test scaffold" [shape=box];
+    "git add generated tree" [shape=doublecircle];
 
-    "Identify target service\nfrom task context" -> "Contract plugin installed?";
-    "Contract plugin installed?" -> "Offer: run bin/install-contracts.sh now?" [label="no"];
-    "Contract plugin installed?" -> "Invoke /{service-name} skill\nnavigate to right API" [label="yes"];
-    "Invoke /{service-name} skill\nnavigate to right API" -> "SDK declared in SKILL.md?";
-    "SDK declared in SKILL.md?" -> "Offer: use SDK dependency\ninstead of generating" [label="yes"];
-    "SDK declared in SKILL.md?" -> "Determine scope\n(full or scoped)" [label="no"];
-    "Offer: use SDK dependency\ninstead of generating" -> "Human chooses SDK?";
-    "Human chooses SDK?" -> "Add SDK to pom.xml\nskip generation" [label="yes"];
-    "Human chooses SDK?" -> "Determine scope\n(full or scoped)" [label="no, generate anyway"];
-    "Determine scope\n(full or scoped)" -> "Ask: full or scoped?" [label="ambiguous"];
-    "Determine scope\n(full or scoped)" -> "Read reference/contract.yaml\nfor target paths" [label="clear"];
-    "Ask: full or scoped?" -> "Read reference/contract.yaml\nfor target paths";
-    "Read reference/contract.yaml\nfor target paths" -> "Generate Feign client\nin feign/ package";
-    "Generate Feign client\nin feign/ package" -> "Write integration test scaffold";
+    "Identify target service" -> "jkit plugin-status <service>";
+    "jkit plugin-status <service>" -> "installed?";
+    "installed?" -> "Offer install-contracts" [label="no"];
+    "Offer install-contracts" -> "jkit plugin-status <service>";
+    "installed?" -> "SDK present?" [label="yes"];
+    "SDK present?" -> "Offer SDK (gate)" [label="yes"];
+    "Offer SDK (gate)" -> "pom-doctor add-dep (SDK)" [label="accept SDK"];
+    "Offer SDK (gate)" -> "Determine scope" [label="generate anyway"];
+    "SDK present?" -> "Determine scope" [label="no"];
+    "Determine scope" -> "openapi-generator-cli generate";
+    "openapi-generator-cli generate" -> "Post-process: move + dedupe";
+    "Post-process: move + dedupe" -> "Write WireMock test scaffold";
+    "Write WireMock test scaffold" -> "git add generated tree";
 }
 ```
 
 ## Detailed Flow
 
-**Step 1: Identify target service**
+**Step 0 — Identify target service.** From the task context, determine which upstream service is needed. Ambiguous → ask: *"Which service do you need a Feign client for?"*
 
-Read the task context to determine which upstream service is needed. If ambiguous, ask: *"Which service do you need a Feign client for?"*
+**Step 1 — Plugin status.**
 
-**Step 2: Confirm contract plugin is installed**
+```bash
+jkit plugin-status <service>
+```
 
-Check whether `/{service-name}` skill is available (the contract plugin is installed). If not:
+Read the JSON. Branch:
 
-> "Contract plugin for `{service-name}` not found.
-> A) Run `install-contracts.sh` now to add it (recommended)
-> B) Abort"
+- `installed: false` → offer:
+  > "Contract plugin for `<service>` not installed.
+  > A) Run `bin/install-contracts.sh` now (recommended)
+  > B) Abort"
 
-On A: run `install-contracts.sh` in the terminal, then continue from Step 3.
+  On A: run the script, re-run `jkit plugin-status`. On B: stop.
+- `installed: true, contract_yaml_path: null` → stop and report (`"plugin installed but reference/contract.yaml missing — contract was published incomplete"`).
+- `installed: true, contract_yaml_path: <path>` → continue. Note `sdk` for Step 2.
 
-**Step 3: Navigate the contract**
+**Step 2 — SDK gate (early).** If `sdk.present: true`:
 
-**REQUIRED SUB-SKILL: invoke `/{service-name}`** to load the contract. Navigate from SKILL.md (Level 1–2) → `domains/{domain-name}.md` (Level 3) to find the right API. Once identified, grep `reference/contract.yaml` for the path (Level 4) to get request/response schemas.
-
-**Step 4: Check for SDK**
-
-If the contract SKILL.md has a `## SDK` section, offer:
-> "An SDK is available: `{groupId}:{artifactId}:{version}`. Add this dependency instead of generating a Feign client?
+> "An SDK is available: `{group_id}:{artifact_id}:{version}`. Add this dependency instead of generating a Feign client?
 > A) Use SDK (recommended — fewer files to maintain)
-> B) Generate Feign client anyway"
+> B) Generate Feign client anyway (e.g. SDK is incompatible / restrictive license / version-locked)"
 
-On A: add the dependency to `pom.xml` and stop.
+On A:
 
-**Step 5: Determine generation scope**
+```bash
+pom-doctor add-dep \
+  --group-id <group_id> --artifact-id <artifact_id> --version <version> \
+  --apply
+```
 
-If the task context specifies which endpoints are needed, use that. Otherwise ask:
+Announce `actions_taken`. Stop — no Feign client generated.
+
+On B: continue to Step 3. Record the human's reason for skipping the SDK in the task context (the choice should be deliberate).
+
+**Step 3 — Determine scope.** Default: full client (every path in the contract). If the task context names specific endpoints, paths, or tags, scope to those. If unclear, ask:
+
 > "Generate:
-> A) Full client — all endpoints in the contract
-> B) Scoped — specific path prefix or tag (tell me which)"
+> A) Full client (recommended unless the contract is large)
+> B) Scoped — give me a path prefix (e.g. `/invoices`) or a tag"
 
-**Step 6: Generate Feign client**
+**Step 4 — Generate.** Use `openapi-generator-cli` with the `java` generator and `feign` library. Confirm the tool is on PATH:
 
-Write `src/main/java/{group-path}/feign/{ServiceName}Client.java`:
-- One `@FeignClient` interface per service
-- Method per endpoint from the identified paths in `reference/contract.yaml`
-- Request/response types derived from the contract schemas — create DTOs in `feign/dto/` if no shared types exist
-
-**Step 7: Write integration test scaffold**
-
-Write `src/test/java/{group-path}/feign/{ServiceName}ClientTest.java`:
-- One test method per generated client method
-- Use WireMock to stub the upstream — stub URLs from `reference/contract.yaml`
-- Tests should fail until WireMock stubs are properly configured (RED by default)
-
-## Contract Plugin Location
-
-Installed plugins are resolved by Claude Code's plugin system. Read contract files relative to the plugin root:
-
-```
-skills/{service-name}/             ← SKILL.md (already loaded when skill is invoked)
-domains/{domain-name}.md           ← Level 3 — read on demand
-reference/contract.yaml            ← Level 4 — grepped for target paths
+```bash
+command -v openapi-generator-cli >/dev/null \
+  || { echo "openapi-generator-cli not installed; install via 'npm i -g @openapitools/openapi-generator-cli' or brew"; exit 1; }
 ```
 
-## Generation Rules
+Run:
 
-- Feign client goes in `src/main/java/{group-path}/feign/{ServiceName}Client.java`
-- One interface per service (not one per domain)
-- If SDK module exists (declared in SKILL.md `## SDK`): offer the SDK dependency first — confirm with human before generating
-- Scoped generation: only include paths matching the specified prefix or tag
-- Integration test scaffold goes in `src/test/java/{group-path}/feign/{ServiceName}ClientTest.java`
+```bash
+openapi-generator-cli generate \
+  -i <contract_yaml_path> \
+  -g java \
+  --library feign \
+  --additional-properties=\
+apiPackage=<group-path>.feign,\
+modelPackage=<group-path>.feign.dto,\
+dateLibrary=java8,\
+useBeanValidation=true,\
+hideGenerationTimestamp=true \
+  --global-property=apis<scope-filter>,models<scope-filter> \
+  -o /tmp/feign-gen-<service>
+```
+
+`<scope-filter>`:
+- Full: omit (`apis,models`).
+- Scoped by tag: `apis=Tag1:Tag2`.
+- Scoped by path prefix: post-filter in Step 5 (openapi-generator's path filtering is limited; easier to delete unwanted files after generation).
+
+Failure → surface the last 20 lines of the tool's output and stop.
+
+**Step 5 — Post-process.** Move generated output into project structure:
+
+1. Move `/tmp/feign-gen-<service>/src/main/java/<group-path>/feign/*` → `src/main/java/<group-path>/feign/`.
+2. DTO de-dup: for each generated class under `feign/dto/`, query `jkit skel src/main/java` (the existing subcommand) for matching FQNs. If a project class already exists with the same shape, delete the generated copy and rewrite the client's import. (When in doubt, keep the generated one — collisions are surfaced at compile-time, which is recoverable.)
+3. If `--scope` was a path prefix in Step 3: delete generated `*Api.java` files whose `@RequestMapping` paths don't match.
+4. Add a Feign config class (`<group-path>/feign/<Service>FeignConfig.java`) with placeholders for:
+   - `RequestInterceptor` for auth (Bearer / API key / mTLS — derive from contract security schemes if present, else leave a `// TODO: wire auth` and warn the human).
+   - Error decoder pointing at the project's error model.
+5. Annotate the `@FeignClient` interface with `name = "<service>"` (URL/discovery resolution is the consumer's choice — leave it as a config property).
+
+**Step 6 — Integration test scaffold.** Write `src/test/java/<group-path>/feign/<Service>ClientIntegrationTest.java`:
+
+- One test method per generated client method.
+- WireMock setup boilerplate (server stub, base URL injection).
+- Each test: stub setup placeholder, client invocation, assertion `// TODO`.
+- **RED by default** — assertions are intentionally TODO so the developer must wire stubs and expectations before the test passes. Mark each TODO clearly.
+
+**Step 7 — Stage.**
+
+```bash
+git add src/main/java/<group-path>/feign/ src/test/java/<group-path>/feign/
+git add pom.xml   # only if pom-doctor was invoked in Step 2 (rare — Step 2's "use SDK" path stops the skill)
+```
+
+Announce the file list. The caller commits.
+
+## Re-invocation
+
+Re-running this skill for the same service **silently overwrites** the generated tree. Before re-generating, confirm with the human if local hand-edits exist (they shouldn't, per the Iron Law — but verify). If the contract version is pinned and unchanged, regeneration is a no-op functionally; if the contract has moved, regeneration reflects the new shape. Do not attempt to merge — let git history be the diff.
