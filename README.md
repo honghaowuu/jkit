@@ -6,7 +6,7 @@ Spec-driven development for Java/Spring Boot microservice teams.
 
 **What's included:**
 
-- 7 Claude skills covering the full dev cycle: spec delta, unit TDD, integration test TDD, coverage gating, contract publishing, SQL migration authoring, and Feign client generation
+- 8 Claude skills covering the full dev cycle: project bootstrap, spec delta, unit TDD, integration test TDD, coverage gating, contract publishing, SQL migration authoring, and Feign client generation
 - `bin/jkit` — a Rust CLI for Java project pipeline operations (pom fragment management, JaCoCo coverage gaps, scenario gap detection, schema migration diff/place, contract bundle staging)
 - `bin/kit` — a language-agnostic companion CLI for cross-cutting operations (plan/plugin status, scenario sync/skip, contract publish)
 - `bin/codeskel` — a polyglot project scanner used during contract generation
@@ -30,11 +30,15 @@ bin/install-contracts.sh
 
 ## Skills workflow
 
-The skills form a pipeline. Spec changes drive TDD, which drives integration tests, which drive contract publishing. Start at `/spec-delta` and follow the cycle through to `/java-verify` before publishing.
+The skills form a pipeline. On a fresh repo, run `/migrate-project` once to bootstrap. After that, every cycle starts at `/spec-delta` and follows the chain through to `/java-verify` before publishing.
+
+### `/migrate-project`
+
+One-time bootstrap. Creates `docs/changes/{pending,done}/` and explains how to write your first change file. Idempotent — safe to re-run.
 
 ### `/spec-delta`
 
-Start here. Computes what changed in `docs/domains/` since the last implementation commit, orders affected domains by dependency, runs scenario-gap detection for each changed domain, and produces a `change-summary.md` for your approval — before any code is written. Everything downstream derives from this change summary.
+Start here for every cycle. Picks up pending change files in `docs/changes/pending/`, infers affected domains, updates the formal docs (`api-spec.yaml`, `domain-model.md`, `api-implement-logic.md`), runs scenario-gap detection, and produces a `change-summary.md` for your approval — before any code is written. Everything downstream derives from this change summary.
 
 ### `/java-tdd`
 
@@ -104,10 +108,12 @@ Some skills shell out to third-party tools that must be on `PATH`:
 | `jkit migration place --run <dir> --feature <slug>` | Move an approved SQL file into the Flyway directory with a freshly-computed NNN |
 | `jkit contract service-meta` | Read-only: returns the metadata the contract skill needs |
 | `jkit contract stage --service … --interview … --domains …` | Generate the contract bundle in `.jkit/contract-stage/<service>/` |
+| `jkit changes bootstrap` | Create `docs/changes/{pending,done}/` with `.gitkeep` markers (idempotent) |
 | `jkit changes status` | Report pending change files and any in-progress run; recommend `no_pending`/`start_new`/`resume` |
 | `jkit changes validate --files <paths>` | Validate change files (non-empty body + frontmatter `domain:` exists) |
 | `jkit changes init --feature <slug> --files <basenames>` | Create `.jkit/<date>-<feature>/` and write `.change-files` |
 | `jkit changes summary --run <dir> --feature <slug> [--gap-total N --gap-domains M]` | Emit a `change-summary.md` skeleton with deterministic fields filled |
+| `jkit changes complete --run <dir>` | Close a run: move `.change-files` entries from `pending/` to `done/`, archive the run dir to `.jkit/done/`, stage and amend HEAD |
 
 ### `kit` subcommands
 
@@ -156,7 +162,7 @@ templates/  # Docker Compose templates, pom fragments, env file templates
 
 Clone the repo and work directly against `main`. Skills live in `skills/<name>/SKILL.md` — each file is a self-contained skill definition consumed by Claude Code. The `bin/jkit` binary is pre-built from Rust source described in `docs/jkit-cli-prd.md`; rebuild with `cargo build --release` and replace the platform binary in `bin/`.
 
-Commit prefix conventions are required — the post-commit hook uses the `(impl):` scope to move processed change files from `docs/changes/pending/` to `docs/changes/done/`:
+Commit prefix conventions are required — `java-tdd` calls `jkit changes complete` on a final `(impl):` commit to move processed change files from `docs/changes/pending/` to `docs/changes/done/` and archive the run dir:
 
 | Prefix | When to use |
 |---|---|

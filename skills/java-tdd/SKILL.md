@@ -143,12 +143,18 @@ Stop when `should_stop: true` (plateau detected). Report residual gaps from the 
 
 **Step 6 — Invoke scenario-tdd.** **REQUIRED SUB-SKILL** once Step 5 stops. Pass the run directory — scenario-tdd reads affected domains from `change-summary.md` and runs `jkit scenarios gap --run <dir>` itself. scenario-tdd invokes `java-verify` when done.
 
-**Step 7 — Final commit.** Commit message MUST use one of:
+**Step 7 — Final commit + run completion.** Commit message MUST use one of:
 
 - `feat(impl): <description>` — new feature
 - `fix(impl): <description>` — bug fix
 - `chore(impl): <description>` — non-feature work
 
-The post-commit hook moves the change files referenced by this run from `docs/changes/pending/` to `docs/changes/done/` and amends the commit.
+After committing, if this completes the plan (re-run `kit plan-status` and check that `recommendation == "already_synced"`, or you know this was the last task), close the run:
+
+```bash
+jkit changes complete --run <run>
+```
+
+This moves the change files referenced by this run from `docs/changes/pending/` to `docs/changes/done/`, archives the run dir to `.jkit/done/<run>`, stages those changes, and amends HEAD. **Ad-hoc mode** (no run dir from Step 1): skip — there is nothing to complete.
 
 **Resume after interruption.** Re-run Step 1. `next_pending_task_index` is the resume point — continue from there, no prompt, no git-log archaeology.

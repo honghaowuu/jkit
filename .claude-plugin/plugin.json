@@ -6,6 +6,7 @@
   "license": "UNLICENSED",
   "keywords": ["java", "spring-boot", "microservice", "tdd", "scenario-tdd"],
   "skills": [
+    { "name": "migrate-project",   "path": "skills/migrate-project" },
     { "name": "spec-delta",        "path": "skills/spec-delta" },
     { "name": "sql-migration",     "path": "skills/sql-migration" },
     { "name": "java-tdd",          "path": "skills/java-tdd" },

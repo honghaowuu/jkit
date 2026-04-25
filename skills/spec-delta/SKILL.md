@@ -390,17 +390,18 @@ spec-delta watches `docs/changes/pending/` for input and updates `docs/domains/*
 
 ```
 .jkit/
-  YYYY-MM-DD-<feature>/             ← one directory per spec-delta run
+  YYYY-MM-DD-<feature>/             ← active run (one directory per spec-delta run)
     .change-files                   ← basenames of change files processed
     change-summary.md
     plan.md
     migration-preview.md            ← sql-migration output (if triggered)
     migration/                      ← SQL files from sql-migration (if triggered)
+  done/                             ← completed runs archived here by `jkit changes complete`
 docs/
   overview.md                       ← ≤1 page, what this service does
   changes/
     pending/                        ← unimplemented change files
-    done/                           ← moved here by post-commit hook
+    done/                           ← moved here by `jkit changes complete` after the final impl commit
   domains/
     billing/                        ← (other domains follow the same shape)
       api-spec.yaml                 ← OpenAPI v3, AI-maintained

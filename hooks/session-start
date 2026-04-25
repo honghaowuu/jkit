@@ -34,10 +34,23 @@ for b in jkit kit codeskel; do
   fi
 done
 
-# 4. Conditional context injection — only for jkit-managed projects.
+# 4. Conditional context injection.
 # A project is jkit-managed iff it tracks pending change descriptions under
-# docs/changes/ (the change-file-driven workflow introduced in 2026-04).
+# docs/changes/. If absent but the project looks Java-y (pom.xml present),
+# nudge the human towards /migrate-project. Otherwise stay silent.
 if [ ! -d "docs/changes" ]; then
+  if [ -f "pom.xml" ] || [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
+    NUDGE="<jkit-onboarding-hint>This looks like a Java project but isn't bootstrapped for the jkit spec-delta workflow yet. Run \`/migrate-project\` to create \`docs/changes/{pending,done}/\` and see how to write your first change file.</jkit-onboarding-hint>"
+    nudge_escaped=$(escape_for_json "$NUDGE")
+    if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
+      printf '{"additional_context": "%s"}\n' "$nudge_escaped"
+    elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${COPILOT_CLI:-}" ]; then
+      printf '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "%s"}}\n' "$nudge_escaped"
+    else
+      printf '{"additionalContext": "%s"}\n' "$nudge_escaped"
+    fi
+    exit 0
+  fi
   printf '{}\n'
   exit 0
 fi

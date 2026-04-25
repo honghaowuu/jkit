@@ -10,7 +10,9 @@ This is a jkit-managed Java/Spring Boot microservice project. Apply these conven
 | `fix(impl):` | Bug fix implementation |
 | `chore(impl):` | Non-feature implementation work |
 
-The `(impl):` scope triggers the post-commit hook to move processed change files from `docs/changes/pending/` to `docs/changes/done/`. Always use a scoped commit for implementation work.
+After `java-tdd` finishes the final task of a plan, it calls `jkit changes complete --run <run>` which moves the processed change files from `docs/changes/pending/` to `docs/changes/done/`, archives the run dir to `.jkit/done/`, and amends the impl commit. There is no implicit post-commit hook — completion is explicit.
+
+Edit `docs/domains/` only via `/spec-delta`, never directly. Direct edits will be overwritten on the next cycle.
 
 ## Environment
 
@@ -24,6 +26,7 @@ Switch envs: `JKIT_ENV=test direnv exec . <cmd>`
 
 ## Skills — when to invoke
 
+- `/migrate-project` — bootstrap a fresh project: create `docs/changes/{pending,done}/` and explain how to write the first change file
 - `/spec-delta` — start here: pick up pending change files in docs/changes/pending/, update formal docs, then drive the full cycle to commit
 - `/sql-migration` — author Liquibase or Flyway migrations aligned with a schema-changing spec delta
 - `/java-tdd` — implement a plan via TDD with JaCoCo unit coverage gap analysis
