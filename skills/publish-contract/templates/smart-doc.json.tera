@@ -1,8 +1,0 @@
-{
-  "outPath": ".jkit/contract-stage/{{ service_name }}/reference",
-  "openApiAllInOne": true,
-  "packageFilters": "{{ package_filter }}",
-  "sourceCodePaths": [
-    {"path": "src/main/java", "desc": "{{ service_name }} service"}
-  ]
-}

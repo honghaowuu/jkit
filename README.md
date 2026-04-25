@@ -107,6 +107,8 @@ Some skills shell out to third-party tools that must be on `PATH`:
 
 | Subcommand | Purpose |
 |---|---|
+| `jkit init` | One-shot project bootstrap: `changes bootstrap` + `standards init` + `init scaffold` (`.envrc`, `.env/{local,test}.env`, `docker-compose.yml`, `docs/overview.md`, fenced `.gitignore` entries). Idempotent. Returns merged JSON with a `next_steps[]` array. |
+| `jkit init scaffold` | Just the file-copy step from `jkit init`, for callers that already ran `changes bootstrap` + `standards init` separately |
 | `jkit pom prereqs --profile <name> [--apply]` | Install a static profile of pom fragments (`testcontainers`, `compose`, `jacoco`, `quality`, `smart-doc`) |
 | `jkit pom add-dep --group-id … --artifact-id … --version … [--apply]` | Add a single dependency to `<dependencies>` |
 | `jkit coverage <jacoco.xml> [--summary] [--min-score N] [--top-k N] [--iteration-state PATH]` | Parse JaCoCo XML and output prioritised coverage gaps |
@@ -161,9 +163,11 @@ bin/        # jkit CLI binary (pre-built, polyglot wrapper) + helper scripts
 docs/       # PRDs, design specs, Java coding standards
 hooks/      # Claude Code hooks and project context injection
 reference/  # Author-facing reference docs (not shipped with the plugin)
-skills/     # Claude skill definitions (one directory per skill)
-templates/  # Docker Compose templates, pom fragments, env file templates
+skills/     # Claude skill definitions (one directory per skill); SKILL.md +
+            # any per-skill templates Claude reads at runtime
 ```
+
+Templates the binary mutates into project files (pom fragments, scaffold seeds, contract `.tera` files) are embedded in `bin/jkit-*` at compile time — not tracked in this repo. Templates Claude reads at runtime live under `skills/<name>/templates/` (e.g., `skills/scenario-tdd/templates/integration-test-sb31.java`).
 
 ---
 

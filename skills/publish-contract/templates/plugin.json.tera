@@ -1,8 +1,0 @@
-{
-  "name": "{{ service_name }}-contract",
-  "description": "Service contract for {{ service_name }}",
-  "version": "{{ version }}",
-  "skills": [
-    { "name": "{{ service_name }}", "path": "skills/{{ service_name }}" }
-  ]
-}
