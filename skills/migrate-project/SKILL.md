@@ -1,6 +1,6 @@
 ---
 name: migrate-project
-description: Use when bootstrapping a project to use jkit's spec-delta workflow — typically a fresh repo or one being onboarded onto change-file-driven specs. Creates docs/changes/{pending,done}/, removes legacy `.jkit/spec-sync` if present, and explains next steps.
+description: Use when bootstrapping a project to use jkit's spec-delta workflow — typically a fresh repo or an existing Java project being onboarded. Creates docs/changes/{pending,done}/ and explains how to write the first change file.
 ---
 
 **Announcement:** At start: *"I'm using the migrate-project skill to bootstrap this project for the spec-delta workflow."*
@@ -13,14 +13,13 @@ description: Use when bootstrapping a project to use jkit's spec-delta workflow 
 
 ## What it does
 
-One mechanical step (`jkit changes bootstrap`) plus orientation. No code changes outside `docs/changes/` and (if present) the legacy `.jkit/spec-sync` marker.
+One mechanical step (`jkit changes bootstrap`) plus orientation. No code changes outside `docs/changes/`.
 
 ## Checklist
 
 - [ ] Confirm we're in a git repo
-- [ ] Detect existing state (jkit-managed? legacy `.spec-sync`? non-Java?)
+- [ ] Detect whether already bootstrapped
 - [ ] `jkit changes bootstrap`
-- [ ] Remove legacy `.jkit/spec-sync` if present (with confirmation)
 - [ ] Tell the human how to write their first change file
 
 ## Detailed Flow
@@ -37,16 +36,11 @@ If the command fails: stop and tell the human:
 ### Step 2 — Detect existing state
 
 ```bash
-ls -d docs/changes/ pom.xml .jkit/spec-sync 2>/dev/null
+ls -d docs/changes/ pom.xml 2>/dev/null
 ```
 
-Three signals to interpret:
-
-| Signal | Meaning | Action |
-|---|---|---|
-| `docs/changes/` exists | Already bootstrapped | Skip Step 3, jump to Step 5 |
-| `.jkit/spec-sync` exists | Legacy spec-sync project | Plan to delete it in Step 4 |
-| no `pom.xml` | Not a Java project | Warn and ask whether to continue (jkit is Java-focused) |
+- `docs/changes/` already exists → already bootstrapped. Step 3 is a no-op (still safe to run); jump straight to Step 4.
+- No `pom.xml` (and no `build.gradle*`) → warn the human that jkit is Java-focused and ask whether to continue.
 
 ### Step 3 — Bootstrap
 
@@ -56,23 +50,11 @@ jkit changes bootstrap
 
 Creates `docs/changes/pending/` and `docs/changes/done/`, each with a `.gitkeep` so the empty dirs survive `git add`. Idempotent. JSON output reports `created` / `existing` lists.
 
-### Step 4 — Remove legacy `.jkit/spec-sync` (if present)
-
-If Step 2 found `.jkit/spec-sync`:
-
-> "Found legacy `.jkit/spec-sync` from the pre-2026-04-24 design. Nothing reads it anymore — safe to delete. Remove it?
-> A) Yes (recommended)
-> B) Keep it for now"
-
-On A: `rm .jkit/spec-sync`. (Don't `rm -rf .jkit/` — other run dirs may live there.)
-
-### Step 5 — Stage and confirm
+### Step 4 — Stage and confirm
 
 ```bash
 git add docs/changes/
 ```
-
-If Step 4 deleted `.jkit/spec-sync`: also `git add .jkit/spec-sync`.
 
 Tell the human:
 
@@ -95,5 +77,5 @@ Tell the human:
 ## Notes
 
 - Don't create `docs/domains/` here. That's spec-delta's job — it will create per-domain dirs as it processes change files.
-- Don't install any git hook. The new design uses an explicit `jkit changes complete` call from `java-tdd` Step 7 instead of a post-commit hook.
-- This skill is **idempotent**. Running it again on an already-bootstrapped project should be safe (Steps 3 and 4 are both no-ops).
+- Don't install any git hook. The design uses an explicit `jkit changes complete` call from `java-tdd` Step 7 instead of a post-commit hook.
+- This skill is **idempotent**. Running it again on an already-bootstrapped project is safe (Step 3 is a no-op).
