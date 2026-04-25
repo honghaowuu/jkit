@@ -1,0 +1,48 @@
+---
+name: {{ service_name }}
+description: Use when your task involves {{ use_when_summary }}.
+keywords: [{{ keywords | join(sep=", ") }}]
+---
+
+## Overview
+
+{{ description }}
+{% if not_responsible_for %}
+**Not responsible for:** {{ not_responsible_for | join(sep=", ") }}
+{% endif %}
+
+---
+
+## Domains
+
+{% for domain in domains %}
+### {{ domain.name }}
+{{ domain.summary }}
+→ Read [`domains/{{ domain.slug }}.md`](../../domains/{{ domain.slug }}.md)
+
+{% endfor %}
+---
+
+## How to navigate this contract
+
+- **Find the right domain:** Read the domain summary above, then open `domains/<slug>.md`.
+- **Find the right API:** The domain file lists APIs with intent descriptions and primary entry points.
+- **Get the schema:** Grep `reference/contract.yaml` for the path once the API is identified.
+
+{% if sdk.present %}
+## SDK
+
+```xml
+<dependency>
+    <groupId>{{ sdk.group_id }}</groupId>
+    <artifactId>{{ sdk.artifact_id }}</artifactId>
+    <version>{{ sdk.version }}</version>
+</dependency>
+```
+{% endif %}
+
+{% if authentication and authentication != "None" %}
+## Authentication
+
+{{ authentication }}
+{% endif %}

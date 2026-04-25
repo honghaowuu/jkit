@@ -26,7 +26,7 @@ pom-doctor prereqs --profile <profile> [--apply] [--pom <path>]
 
 | Argument | Default | Description |
 |---|---|---|
-| `--profile <profile>` | required | One of: `testcontainers`, `compose`, `jacoco`, `quality` |
+| `--profile <profile>` | required | One of: `testcontainers`, `compose`, `jacoco`, `quality`, `smart-doc` |
 | `--apply` | false | Without it: report state, mutate nothing. With it: install missing fragments. |
 | `--pom <path>` | `pom.xml` (cwd) | Path to the Maven project file |
 
@@ -42,6 +42,7 @@ Each profile names a pom-fragment bundle the binary knows about. Templates are c
 | `compose` | RestAssured | `<dependencies>` |
 | `jacoco` | jacoco-maven-plugin (prepare-agent + report goals) | `<build><plugins>` |
 | `quality` | Spotless (google-java-format) + PMD + SpotBugs | `<build><plugins>` |
+| `smart-doc` | smart-doc-maven-plugin (used by `jkit contract stage` for OpenAPI generation) | `<build><plugins>` |
 
 `testcontainers` and `compose` are mutually exclusive — callers pick based on Spring Boot version. The binary does not detect.
 
