@@ -5,109 +5,138 @@ description: Use when a spec change implies database schema changes and a Flyway
 
 **Announcement:** At start: *"I'm using the sql-migration skill to generate the Flyway migration for the schema changes."*
 
+## Iron Law
+
+Never move a SQL file into `src/main/resources/db/migration/` without (a) live DB introspection and (b) explicit human approval at both gates. Spec-only inference produces migrations that fail at apply time — refuse it unless the human has explicitly opted in.
+
+## Rationalization Table
+
+| Excuse | Reality |
+|--------|---------|
+| "DB isn't reachable, just infer from spec" | You'll propose columns that already exist or skip ones that don't. Bring the DB up. |
+| "I'll fix the `git add` later" | The caller's commit is task-scoped; if you don't stage now, the migration is silently missed. |
+| "ADD COLUMN NOT NULL is fine, table is small" | Backfill is required for any non-empty table. Write the backfill in the same migration. |
+| "One more edit cycle, the SQL is almost right" | After 3 cycles, escalate — the spec or the target-schema is wrong, not the SQL. |
+
 ## Checklist
 
-- [ ] Introspect live schema
-- [ ] Write migration-preview.md
-- [ ] Get preview approval
-- [ ] Generate migration SQL
-- [ ] Get SQL approval
-- [ ] Move to Flyway directory
+- [ ] Read change-summary.md to identify affected tables
+- [ ] Write `target-schema.yaml` from spec analysis
+- [ ] Run `jkit migration diff --run <dir>`
+- [ ] Render preview from diff JSON; HARD-GATE: preview approval
+- [ ] Generate migration SQL from approved diff
+- [ ] HARD-GATE: SQL approval (max 3 edit cycles)
+- [ ] Run `jkit migration place --run <dir> --feature <slug>`
+- [ ] Return to caller
 
 ## Process Flow
 
 ```dot
 digraph sql_migration {
-    "Detect DB type from pom.xml" [shape=box];
-    "Introspect live schema\n(information_schema)" [shape=box];
-    "DB unreachable?" [shape=diamond];
-    "Warn: spec-only inference" [shape=box];
-    "Write migration-preview.md" [shape=box];
+    "Read change-summary.md" [shape=box];
+    "Write target-schema.yaml" [shape=box];
+    "jkit migration diff" [shape=box];
+    "db_reachable?" [shape=diamond];
+    "Stop: ask human to start DB" [shape=box];
+    "changes empty?" [shape=diamond];
+    "Done (no migration needed)" [shape=doublecircle];
+    "Render preview from JSON" [shape=box];
     "HARD-GATE: preview approval" [shape=box style=filled fillcolor=lightyellow];
-    "Generate migration SQL\n(.jkit/<run>/migration/)" [shape=box];
+    "Generate SQL from diff" [shape=box];
     "HARD-GATE: SQL approval" [shape=box style=filled fillcolor=lightyellow];
-    "Move to src/main/resources/db/migration/" [shape=box];
-    "Done (return to caller)" [shape=doublecircle];
+    "Edit cycles >= 3?" [shape=diamond];
+    "Stop: escalate" [shape=box];
+    "jkit migration place" [shape=box];
+    "Return to caller" [shape=doublecircle];
 
-    "Detect DB type from pom.xml" -> "Introspect live schema\n(information_schema)";
-    "Introspect live schema\n(information_schema)" -> "DB unreachable?";
-    "DB unreachable?" -> "Warn: spec-only inference" [label="yes"];
-    "DB unreachable?" -> "Write migration-preview.md" [label="no"];
-    "Warn: spec-only inference" -> "Write migration-preview.md";
-    "Write migration-preview.md" -> "HARD-GATE: preview approval";
-    "HARD-GATE: preview approval" -> "Generate migration SQL\n(.jkit/<run>/migration/)" [label="approved"];
-    "HARD-GATE: preview approval" -> "Write migration-preview.md" [label="edit requested"];
-    "HARD-GATE: preview approval" -> "Done (return to caller)" [label="skip"];
-    "Generate migration SQL\n(.jkit/<run>/migration/)" -> "HARD-GATE: SQL approval";
-    "HARD-GATE: SQL approval" -> "Move to src/main/resources/db/migration/" [label="approved"];
-    "HARD-GATE: SQL approval" -> "Generate migration SQL\n(.jkit/<run>/migration/)" [label="edit requested"];
-    "Move to src/main/resources/db/migration/" -> "Done (return to caller)";
+    "Read change-summary.md" -> "Write target-schema.yaml";
+    "Write target-schema.yaml" -> "jkit migration diff";
+    "jkit migration diff" -> "db_reachable?";
+    "db_reachable?" -> "Stop: ask human to start DB" [label="no"];
+    "db_reachable?" -> "changes empty?" [label="yes"];
+    "changes empty?" -> "Done (no migration needed)" [label="yes"];
+    "changes empty?" -> "Render preview from JSON" [label="no"];
+    "Render preview from JSON" -> "HARD-GATE: preview approval";
+    "HARD-GATE: preview approval" -> "Write target-schema.yaml" [label="edit"];
+    "HARD-GATE: preview approval" -> "Generate SQL from diff" [label="approve"];
+    "HARD-GATE: preview approval" -> "Return to caller" [label="skip (warn first)"];
+    "Generate SQL from diff" -> "HARD-GATE: SQL approval";
+    "HARD-GATE: SQL approval" -> "jkit migration place" [label="approve"];
+    "HARD-GATE: SQL approval" -> "Edit cycles >= 3?" [label="edit"];
+    "Edit cycles >= 3?" -> "Stop: escalate" [label="yes"];
+    "Edit cycles >= 3?" -> "Generate SQL from diff" [label="no"];
+    "jkit migration place" -> "Return to caller";
 }
 ```
 
 ## Detailed Flow
 
-**Step 1: Introspect live schema**
+**Step 0 — Identify scope.** The run directory is passed by the caller. Read `<run>/change-summary.md` to identify affected tables (first column of `## Domains Changed` plus any explicit schema notes). If invoked without a run dir → stop and ask the caller.
 
-Detect DB type from `pom.xml` JDBC driver artifact (e.g., `postgresql`, `mysql`). Run a read-only `information_schema` query using `$DATABASE_URL` from environment (loaded by direnv):
+**Step 1 — Write `target-schema.yaml`.** Synthesise the post-migration schema from the spec docs (api-spec.yaml, plan.md, any domain schema documents). Write to `<run>/target-schema.yaml`. Append-only: only enumerate tables/columns relevant to this run. See `docs/jkit-migration-prd.md` for the schema format.
+
+**Step 2 — Run schema diff.**
 
 ```bash
-psql "$DATABASE_URL" -t -c \
-  "SELECT column_name, data_type FROM information_schema.columns \
-   WHERE table_name = '<table>' ORDER BY ordinal_position;"
+jkit migration diff --run <run>
 ```
 
-Fallback order:
-1. Env vars not in environment → read env files directly:
-   - Single-file layout: `.env/local.env`
-   - Directory layout: `.env/local/*.env` (read all, extract `DATABASE_URL`)
-2. DB unreachable → warn: *"DB not reachable — inferring schema changes from spec only. Review migration-preview.md carefully."* Continue with spec-only inference.
+Read the JSON. Three branches:
 
-**Step 2: Write migration-preview.md**
+- `db_reachable: false` → stop and report (`"DATABASE_URL not resolved or DB unreachable; bring the DB up and re-run"`). Do **not** retry with `--no-db` unless the human explicitly accepts the risk in writing.
+- `changes: []` → no migration needed. Return to caller with a one-line summary.
+- `changes: [...]` → continue.
 
-Write `.jkit/<run>/migration-preview.md`. Omit columns already present in the live DB:
+**Step 3 — Render preview, gate.** Render `<run>/migration-preview.md` from the JSON:
 
 ```markdown
 ## Migration Preview: <feature>
 
-| Change | Type | Detail |
-|--------|------|--------|
-| `bulk_invoice` | CREATE TABLE | id, tenant_id, status, created_at |
-| `invoice.bulk_id` | ADD COLUMN | FK to bulk_invoice(id), nullable |
+| Change | Detail |
+|---|---|
+| CREATE TABLE `bulk_invoice` | id (uuid PK), tenant_id (uuid), status (varchar(32)), created_at (timestamptz) |
+| ADD COLUMN `invoice.bulk_id` | uuid, nullable, FK → bulk_invoice(id) |
+
+**Warnings**
+- ADD COLUMN bulk_invoice.foo NOT NULL — backfill required
 ```
 
-Tell human: `"Written to .jkit/<run>/migration-preview.md"`
+Announce: `"Preview written to <run>/migration-preview.md."`
 
 ```
-A) Approve as-is (recommended)
-B) Edit preview first
-C) Skip migration
+A) Approve and generate SQL (recommended)
+B) Edit target-schema.yaml and re-diff
+C) Skip migration (warn first — caller's impl will reference nonexistent columns)
 ```
 
-<HARD-GATE>
-Do NOT generate migration SQL until the human approves migration-preview.md.
-</HARD-GATE>
+<HARD-GATE>Do NOT generate SQL until the human approves.</HARD-GATE>
 
-On C: return to caller immediately (no SQL generated).
+On C: explicitly tell the human *"skipping will leave the impl referencing schema that doesn't exist; confirm?"* before honouring.
 
-**Step 3: Generate migration SQL**
+**Step 4 — Generate SQL.** Write `<run>/migration/V<YYYYMMDD>_pending__<slug>.sql` from the approved diff JSON. The date placeholder + `pending` index are placeholders — `migration place` will rewrite them at move-time.
 
-Generate `.jkit/<run>/migration/V<YYYYMMDD>_NNN__<feature>.sql` from the approved preview. `NNN` = next sequential index in `src/main/resources/db/migration/` (padded to 3 digits).
+`<slug>` = lower-kebab-case feature name derived from the run / spec.
 
-Tell human: `"Migration SQL written to .jkit/<run>/migration/<file>.sql"`
+For each `change` in the JSON: emit the corresponding DDL. Hand-author backfills, complex constraints, and index strategies — the binary surfaces the *requirement*; the SQL is your judgment.
+
+Announce: `"SQL written to <run>/migration/<file>.sql."`
 
 ```
-A) Looks good — move to src/main/resources/db/migration/ (recommended)
-B) Edit the SQL first
-C) Abort
+A) Approve and place in Flyway directory (recommended)
+B) Edit SQL and re-show
+C) Abort (return without placement)
 ```
 
-<HARD-GATE>
-Do NOT move the SQL file until the human approves it.
-</HARD-GATE>
+<HARD-GATE>Do NOT place the file until the human approves.</HARD-GATE>
 
-**Step 4: Move to Flyway directory**
+**Edit-loop bound:** max 3 edit cycles. After 3, stop and escalate — the spec or `target-schema.yaml` is likely wrong, not the SQL.
 
-On approval: move SQL file to `src/main/resources/db/migration/`. The file will be included in the caller's implementation commit.
+**Step 5 — Place.**
 
-Return to caller.
+```bash
+jkit migration place --run <run> --feature <slug>
+```
+
+Reads `git_staged` from output. If `false`, run `git add <destination>` manually and warn the human.
+
+**Step 6 — Return.** The caller (typically java-tdd) commits the staged migration as part of its impl commit. Do not commit here.
