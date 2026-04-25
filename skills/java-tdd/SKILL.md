@@ -20,7 +20,7 @@ description: Use when implementing any Java feature or bugfix via test-driven de
 
 ## Checklist
 
-- [ ] Load java-coding-standards
+- [ ] Load standards (run `jkit standards list`, read every file printed)
 - [ ] Run `kit plan-status` (route by `recommendation`)
 - [ ] Choose execution mode (plan-driven only)
 - [ ] Run `jkit pom prereqs --profile jacoco --apply`
@@ -34,7 +34,7 @@ description: Use when implementing any Java feature or bugfix via test-driven de
 
 ```dot
 digraph java_tdd {
-    "Load java-coding-standards" [shape=box];
+    "Load standards (jkit standards list)" [shape=box];
     "kit plan-status" [shape=box];
     "Recommendation?" [shape=diamond];
     "Stop + report" [shape=box];
@@ -50,7 +50,7 @@ digraph java_tdd {
     "Invoke scenario-tdd" [shape=doublecircle];
     "Final commit" [shape=doublecircle];
 
-    "Load java-coding-standards" -> "kit plan-status";
+    "Load standards (jkit standards list)" -> "kit plan-status";
     "kit plan-status" -> "Recommendation?";
     "Recommendation?" -> "Ask execution mode" [label="implement_from_plan"];
     "Recommendation?" -> "jkit pom --profile jacoco --apply" [label="no_plan (ad-hoc)"];
@@ -73,7 +73,7 @@ digraph java_tdd {
 
 ## Detailed Flow
 
-**Step 0 — Load java-coding-standards.** Read `<plugin-root>/docs/java-coding-standards.md`.
+**Step 0 — Load standards.** Run `jkit standards list` from the project root and read every file it prints. Apply all rules. (If the command errors with a missing-config message, run `jkit standards init` first to create `docs/project-info.yaml`.)
 
 **Step 1 — Plan status.**
 
@@ -113,7 +113,7 @@ Announce non-empty `actions_taken`. If `ready: false` or `blocking_errors` is no
 
 **Step 4 — Implement.** Route by Step 2 selection:
 
-- **Plan + Mode 1 (Subagent-Driven):** invoke `superpowers:subagent-driven-development` with `plan_path` and the model tier chosen in Step 2. Each subagent task spec MUST embed (a) the java-coding-standards reference and (b) the Step 4.5 compile-check as an acceptance gate before reporting done. Parent flow does not run Step 4.5 in this mode.
+- **Plan + Mode 1 (Subagent-Driven):** invoke `superpowers:subagent-driven-development` with `plan_path` and the model tier chosen in Step 2. Each subagent task spec MUST embed (a) the standards reference (the file set printed by `jkit standards list`) and (b) the Step 4.5 compile-check as an acceptance gate before reporting done. Parent flow does not run Step 4.5 in this mode.
 - **Plan + Mode 2 (Inline):** invoke `superpowers:executing-plans`. For each task it drives, use `superpowers:test-driven-development` for RED/GREEN/REFACTOR, then run Step 4.5 before advancing.
 - **Ad-hoc (no plan):** invoke `superpowers:test-driven-development` directly on the described change, then run Step 4.5.
 
