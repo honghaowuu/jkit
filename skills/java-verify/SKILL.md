@@ -11,7 +11,7 @@ Quality gates are non-negotiable. If Spotless / PMD / SpotBugs / JaCoCo are not 
 
 ## Checklist
 
-- [ ] Load java-coding-standards
+- [ ] Load standards (run `jkit standards list`, read every file printed)
 - [ ] `jkit pom prereqs --profile quality --apply`
 - [ ] `mvn spotless:apply` (auto-fix formatting before verify)
 - [ ] `mvn verify` — classify failures, fix at root, repeat (max 3 attempts)
@@ -22,7 +22,7 @@ Quality gates are non-negotiable. If Spotless / PMD / SpotBugs / JaCoCo are not 
 
 ```dot
 digraph java_verify {
-    "Load java-coding-standards" [shape=box];
+    "Load standards (jkit standards list)" [shape=box];
     "jkit pom --profile quality --apply" [shape=box];
     "mvn spotless:apply + git add -u" [shape=box];
     "mvn verify" [shape=box];
@@ -35,7 +35,7 @@ digraph java_verify {
     "Ask: fix now or note for review" [shape=box];
     "superpowers:requesting-code-review" [shape=doublecircle];
 
-    "Load java-coding-standards" -> "jkit pom --profile quality --apply";
+    "Load standards (jkit standards list)" -> "jkit pom --profile quality --apply";
     "jkit pom --profile quality --apply" -> "mvn spotless:apply + git add -u";
     "mvn spotless:apply + git add -u" -> "mvn verify";
     "mvn verify" -> "Failure?";
@@ -54,7 +54,7 @@ digraph java_verify {
 
 ## Detailed Flow
 
-**Step 0 — Load java-coding-standards.** Read `<plugin-root>/docs/java-coding-standards.md`.
+**Step 0 — Load standards.** Run `jkit standards list` from the project root and read every file it prints. Apply all rules. (If the command errors with a missing-config message, run `jkit standards init` first to create `docs/project-info.yaml`.)
 
 **Step 1 — Quality plugin prerequisites.**
 
