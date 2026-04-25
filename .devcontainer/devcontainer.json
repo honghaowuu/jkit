@@ -1,0 +1,30 @@
+{
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "features": {},
+  "customizations": { 
+      "codespaces": { 
+          "repositories": {
+              "honghaowuu/kit-core": {
+                  "permissions": {
+                      "contents": "write"
+                   }
+              },
+              "honghaowuu/jkit-cli": {
+                  "permissions": {
+                      "contents": "write"
+                   }
+              },
+              "honghaowuu/jacoco-filter": {
+                  "permissions": {
+                      "contents": "write"
+                   }
+              },
+              "honghaowuu/codeskel": {
+                  "permissions": {
+                      "contents": "write"
+                   }
+             }
+           }
+       }
+   }
+}
