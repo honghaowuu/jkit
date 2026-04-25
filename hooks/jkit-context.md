@@ -10,11 +10,9 @@ This is a jkit-managed Java/Spring Boot microservice project. Apply these conven
 | `fix(impl):` | Bug fix implementation |
 | `chore(impl):` | Non-feature implementation work |
 
-After `java-tdd` finishes the final task of a plan, it calls `jkit changes complete --run <run>` which moves the processed change files from `docs/changes/pending/` to `docs/changes/done/`, archives the run dir to `.jkit/done/`, and amends the impl commit. There is no implicit post-commit hook — completion is explicit.
+Edit `docs/domains/` only via `/spec-delta`, never directly.
 
-Edit `docs/domains/` only via `/spec-delta`, never directly. Direct edits will be overwritten on the next cycle.
-
-If state ever looks inconsistent (resume points at the wrong run, files missing, etc.) run `jkit changes doctor` for a read-only diagnostic.
+If state looks inconsistent, run `jkit changes doctor` for a read-only diagnostic.
 
 ## Environment
 
@@ -28,14 +26,14 @@ Switch envs: `JKIT_ENV=test direnv exec . <cmd>`
 
 ## Skills — when to invoke
 
-- `/migrate-project` — bootstrap a fresh project: create `docs/changes/{pending,done}/` and explain how to write the first change file
-- `/write-change` — author a new change file under `docs/changes/pending/` via brainstorm or one-shot capture (use when the human says "I want to add X" or otherwise wants to describe a new requirement). Hands off to `/spec-delta` only if the human approves.
-- `/spec-delta` — start here: pick up pending change files in docs/changes/pending/, update formal docs, then drive the full cycle to commit
-- `/sql-migration` — author Liquibase or Flyway migrations aligned with a schema-changing spec delta
-- `/java-tdd` — implement a plan via TDD with JaCoCo unit coverage gap analysis
-- `/scenario-tdd` — implement integration test gaps from change-summary.md, one scenario at a time
-- `/java-verify` — run quality gates: mvn verify + merged coverage + API coverage + code review handoff
-- `/publish-contract` — generate and push the 4-level service contract for other teams
-- `bin/install-contracts.sh` — add upstream service contract plugins as dependencies
+- `/migrate-project` — bootstrap a fresh project for the spec-delta workflow
+- `/write-change` — author a new change file in `docs/changes/pending/`
+- `/spec-delta` — implement pending change files: update formal docs, plan, code
+- `/sql-migration` — author Liquibase/Flyway migrations for schema-changing deltas
+- `/java-tdd` — implement a plan via TDD with JaCoCo coverage analysis
+- `/scenario-tdd` — implement integration test gaps from change-summary.md
+- `/java-verify` — quality gates: mvn verify + merged coverage + API coverage
+- `/publish-contract` — generate and push the 4-level service contract
 - `/generate-feign` — generate a Feign client from an installed contract plugin
+- `bin/install-contracts.sh` — add upstream service contract plugins as dependencies
 </jkit-project-context>
