@@ -22,7 +22,7 @@ description: Use when implementing integration test scenarios identified as gaps
 
 ## Checklist
 
-- [ ] Load java-coding-standards
+- [ ] Load standards (run `jkit standards list`, read every file printed)
 - [ ] Run `jkit scenarios prereqs --apply`
 - [ ] Run `jkit scenarios gap --run <dir>`
 - [ ] Per gap: lightweight gate → `superpowers:test-driven-development` (or `kit scenarios skip`)
@@ -32,7 +32,7 @@ description: Use when implementing integration test scenarios identified as gaps
 
 ```dot
 digraph scenario_tdd {
-    "Load java-coding-standards" [shape=box];
+    "Load standards (jkit standards list)" [shape=box];
     "jkit scenarios prereqs --apply" [shape=box];
     "Ready?" [shape=diamond];
     "Stop + report" [shape=box];
@@ -43,7 +43,7 @@ digraph scenario_tdd {
     "kit scenarios skip" [shape=box];
     "TDD per scenario" [shape=box];
 
-    "Load java-coding-standards" -> "jkit scenarios prereqs --apply";
+    "Load standards (jkit standards list)" -> "jkit scenarios prereqs --apply";
     "jkit scenarios prereqs --apply" -> "Ready?";
     "Ready?" -> "jkit scenarios gap --run <dir>" [label="yes"];
     "Ready?" -> "Stop + report" [label="no"];
@@ -59,7 +59,7 @@ digraph scenario_tdd {
 
 ## Detailed Flow
 
-**Step 0 — Load java-coding-standards.** Read `<plugin-root>/docs/java-coding-standards.md`.
+**Step 0 — Load standards.** Run `jkit standards list` from the project root and read every file it prints. Apply all rules. (If the command errors with a missing-config message, run `jkit standards init` first to create `docs/project-info.yaml`.)
 
 **Step 1 — Prerequisites.**
 
