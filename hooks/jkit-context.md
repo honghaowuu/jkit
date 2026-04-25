@@ -29,6 +29,7 @@ Switch envs: `JKIT_ENV=test direnv exec . <cmd>`
 ## Skills — when to invoke
 
 - `/migrate-project` — bootstrap a fresh project: create `docs/changes/{pending,done}/` and explain how to write the first change file
+- `/write-change` — author a new change file under `docs/changes/pending/` via brainstorm or one-shot capture (use when the human says "I want to add X" or otherwise wants to describe a new requirement). Hands off to `/spec-delta` only if the human approves.
 - `/spec-delta` — start here: pick up pending change files in docs/changes/pending/, update formal docs, then drive the full cycle to commit
 - `/sql-migration` — author Liquibase or Flyway migrations aligned with a schema-changing spec delta
 - `/java-tdd` — implement a plan via TDD with JaCoCo unit coverage gap analysis

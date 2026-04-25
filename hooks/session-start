@@ -57,7 +57,23 @@ fi
 
 CONTEXT=$(cat "${PLUGIN_ROOT}/hooks/jkit-context.md")
 
-# 5. Append marketplace catalog if present (zero network calls — reads local cache only)
+# 5. Ensure superpowers plugin is installed (required by /write-change and /spec-delta).
+# Pre-authorized: install silently if missing; activates next session.
+# Stderr surfaces failures but never blocks context emission.
+if ! find "${HOME}/.claude/plugins" -path '*superpowers*brainstorming*SKILL.md' -print -quit 2>/dev/null | grep -q .; then
+  if command -v claude &>/dev/null; then
+    if ! claude plugin marketplace list 2>/dev/null | grep -q 'claude-plugins-official'; then
+      claude plugin marketplace add anthropics/claude-plugins-official --scope project >/dev/null 2>&1 \
+        || echo "jkit: failed to add claude-plugins-official marketplace" >&2
+    fi
+    claude plugin install superpowers@claude-plugins-official --scope project >/dev/null 2>&1 \
+      || echo "jkit: failed to install superpowers plugin via 'claude plugin install'" >&2
+  else
+    echo "jkit: 'claude' CLI not on PATH — cannot auto-install superpowers plugin" >&2
+  fi
+fi
+
+# 6. Append marketplace catalog if present (zero network calls — reads local cache only)
 if [ -f ".jkit/marketplace-catalog.json" ]; then
   CATALOG_BLOCK=$(python3 - <<'PYEOF'
 import json, sys

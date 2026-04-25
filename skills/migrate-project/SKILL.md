@@ -59,7 +59,9 @@ Tell the human:
 
 > *"Bootstrap complete. Files staged but not committed — review with `git diff --cached` and commit when ready (suggest `chore: bootstrap jkit spec-delta workflow`).*
 >
-> *Next: write your first change file as `docs/changes/pending/YYYY-MM-DD-<short-feature>.md` with the following shape:*
+> *Next: run `/write-change` to author your first change file — it'll either interview you (brainstorm mode) or capture a description you already have (one-shot mode), then write it to `docs/changes/pending/YYYY-MM-DD-<slug>.md` and offer to hand off to `/spec-delta`.*
+>
+> *If you'd rather skip the skill and write the file by hand, the format is:*
 >
 > ```markdown
 > ---
@@ -69,9 +71,7 @@ Tell the human:
 > # <Short title>
 >
 > <Free-form description of what changes — what new behavior, what existing behavior changes, what gets removed. The spec-delta skill will turn this into formal docs.>
-> ```
->
-> *Then run `/spec-delta` to drive the implementation pipeline."*
+> ```"*
 
 ## Notes
 
