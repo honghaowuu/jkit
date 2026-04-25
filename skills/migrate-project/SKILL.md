@@ -17,21 +17,20 @@ One mechanical step (`jkit changes bootstrap`) plus orientation. No code changes
 
 ## Checklist
 
-- [ ] Confirm we're in a git repo
+- [ ] Ensure we're in a git repo (`git init` if not)
 - [ ] Detect whether already bootstrapped
 - [ ] `jkit changes bootstrap`
 - [ ] Tell the human how to write their first change file
 
 ## Detailed Flow
 
-### Step 1 — Confirm git repo
+### Step 1 — Ensure git repo
 
 ```bash
-git rev-parse --git-dir
+git rev-parse --git-dir 2>/dev/null || git init -q
 ```
 
-If the command fails: stop and tell the human:
-> *"This directory isn't a git repo. Run `git init` first, then re-invoke `/migrate-project`."*
+If `git rev-parse` fails, run `git init` directly — no prompt. Announce: *"Initialized git repo."* The bootstrap workflow assumes git, so this is a safe automatic action.
 
 ### Step 2 — Detect existing state
 
