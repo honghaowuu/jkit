@@ -177,7 +177,7 @@ kit contract publish --service <service> --confirmed
 
 The binary handles push, marketplace sync, catalog write, and the two `chore(contract):` commits. Announce the resulting commit SHAs and the contract repo URL.
 
-**Step 10 — Return.** Done. The `chore(contract):` commit prefix prevents the post-commit hook from advancing `.jkit/spec-sync` (intentional — contract publication is not implementation).
+**Step 10 — Return.** Done. The `chore(contract):` commit prefix is outside the `(impl):` set, so the post-commit hook leaves `docs/changes/pending/` untouched (intentional — contract publication is not implementation).
 
 ## Contract Plugin Repo Structure (reference)
 

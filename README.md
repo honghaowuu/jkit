@@ -6,8 +6,10 @@ Spec-driven development for Java/Spring Boot microservice teams.
 
 **What's included:**
 
-- 8 Claude skills covering the full dev cycle: spec delta, unit TDD, integration test TDD, coverage gating, contract publishing, and Feign client generation
-- `bin/jkit` — a Rust CLI for Java project analysis (class skeleton scan, JaCoCo coverage gaps, Spring component scan, schema migration scan)
+- 7 Claude skills covering the full dev cycle: spec delta, unit TDD, integration test TDD, coverage gating, contract publishing, SQL migration authoring, and Feign client generation
+- `bin/jkit` — a Rust CLI for Java project pipeline operations (pom fragment management, JaCoCo coverage gaps, scenario gap detection, schema migration diff/place, contract bundle staging)
+- `bin/kit` — a language-agnostic companion CLI for cross-cutting operations (plan/plugin status, scenario sync/skip, contract publish)
+- `bin/codeskel` — a polyglot project scanner used during contract generation
 - Hook-injected project context that keeps skills consistent across Claude sessions
 
 ---
@@ -54,10 +56,6 @@ Generates the 4-level service contract — a SKILL.md skill definition plus per-
 
 Generates a type-safe Feign client from an installed upstream contract plugin. Run this after `bin/install-contracts.sh` to wire a dependency's API into your service.
 
-### `/scenario-gap`
-
-Identifies integration test gaps by comparing declared API endpoints (from `api-spec.yaml` files) against RestAssured tests already in the test source tree. Called internally by `/spec-delta` but can be run standalone against a single domain.
-
 ### `/sql-migration`
 
 Guides authoring of Liquibase or Flyway migrations aligned with the current spec. Reads schema analysis from the change summary and produces migration files that match the intended schema state.
@@ -66,7 +64,11 @@ Guides authoring of Liquibase or Flyway migrations aligned with the current spec
 
 ## `bin/` tools
 
-**`bin/jkit`** is the Rust CLI that powers the skills' project analysis. It reads raw project files and outputs compact JSON — no prose, no color, machine-readable by default. Use `--pretty` for human-readable output during development.
+**`bin/jkit`** is the Java-pipeline Rust CLI. It reads raw project files and outputs compact JSON — no prose, no color, machine-readable by default. Use `--pretty` for human-readable output during development.
+
+**`bin/kit`** is the language-agnostic companion CLI used by skills that aren't Java-specific (plan/plugin state, scenario sync/skip, contract publish).
+
+**`bin/codeskel`** is a polyglot project scanner used by the contract-generation flow.
 
 **`bin/install-contracts.sh`** installs upstream service contract plugins listed in `.claude/settings.json` as Claude plugin dependencies, making their skills and domain docs available locally.
 
@@ -89,20 +91,39 @@ Some skills shell out to third-party tools that must be on `PATH`:
 
 ## CLI reference
 
-### Subcommands
+### `jkit` subcommands
 
 | Subcommand | Purpose |
 |---|---|
-| `jkit skel <path>` | Scan Java source, output class/method signatures with Javadoc metadata |
-| `jkit skel domains <root>` | Detect logical subdomains by package structure and annotation patterns |
-| `jkit coverage <jacoco.xml>` | Parse JaCoCo XML and output prioritised coverage gaps |
-| `jkit coverage --api <domains-dir> <test-src-dir>` | Compare declared API endpoints vs RestAssured-tested endpoints |
-| `jkit scan spring` | Identify Spring components relevant to integration testing (repositories, Feign clients, Kafka, Redis) |
-| `jkit scan contract` | Identify exposed endpoints and consumed Feign clients |
-| `jkit scan schema` | Parse Liquibase/Flyway changelogs and output applied/pending migrations |
-| `jkit scan project` | Inspect `pom.xml` and test structure for tooling and coverage gaps |
+| `jkit pom prereqs --profile <name> [--apply]` | Install a static profile of pom fragments (`testcontainers`, `compose`, `jacoco`, `quality`, `smart-doc`) |
+| `jkit pom add-dep --group-id … --artifact-id … --version … [--apply]` | Add a single dependency to `<dependencies>` |
+| `jkit coverage <jacoco.xml> [--summary] [--min-score N] [--top-k N] [--iteration-state PATH]` | Parse JaCoCo XML and output prioritised coverage gaps |
+| `jkit scenarios prereqs [--apply]` | Detect Spring Boot version, install test deps, resolve runtime, ensure compose template |
+| `jkit scenarios gap [<domain> \| --run <dir>]` | List scenarios in `test-scenarios.yaml` lacking a matching JUnit test method |
+| `jkit migration diff --run <dir>` | Compute the schema delta and surface warnings |
+| `jkit migration place --run <dir> --feature <slug>` | Move an approved SQL file into the Flyway directory with a freshly-computed NNN |
+| `jkit contract service-meta` | Read-only: returns the metadata the contract skill needs |
+| `jkit contract stage --service … --interview … --domains …` | Generate the contract bundle in `.jkit/contract-stage/<service>/` |
 
-All subcommands output compact JSON to stdout. Use `--output <path>` to write to a file and `--pretty` for formatted output.
+### `kit` subcommands
+
+| Subcommand | Purpose |
+|---|---|
+| `kit plan-status [--run <dir>]` | Report current jkit plan/run state as JSON |
+| `kit plugin-status <plugin-name>` | Report install state of a Claude Code plugin |
+| `kit scenarios sync <domain>` | Derive required scenarios from `api-spec.yaml`; append-only into `test-scenarios.yaml` |
+| `kit scenarios skip --run <dir> <domain> <id>` | Record a per-run scenario skip |
+| `kit contract publish --service … [--confirmed] [--no-commit]` | Push a pre-staged contract bundle and update the marketplace |
+
+### `codeskel` subcommands
+
+| Subcommand | Purpose |
+|---|---|
+| `codeskel scan <project-root>` | Analyse project, output class/method signatures + Javadoc metadata to a cache |
+| `codeskel get <cache-path> [--path FILE \| --index N \| --deps FILE \| --refs FILE]` | Query individual files or dependency edges from the cache |
+| `codeskel rescan` / `codeskel next` / `codeskel pom` | Re-analyse files, advance the scan cursor, extract Maven metadata |
+
+All subcommands output compact JSON to stdout. Most accept `--pretty` for formatted output.
 
 ### Exit codes
 
@@ -131,7 +152,7 @@ templates/  # Docker Compose templates, pom fragments, env file templates
 
 Clone the repo and work directly against `main`. Skills live in `skills/<name>/SKILL.md` — each file is a self-contained skill definition consumed by Claude Code. The `bin/jkit` binary is pre-built from Rust source described in `docs/jkit-cli-prd.md`; rebuild with `cargo build --release` and replace the platform binary in `bin/`.
 
-Commit prefix conventions are required — the post-commit hook uses the `(impl):` scope to update `.jkit/spec-sync`:
+Commit prefix conventions are required — the post-commit hook uses the `(impl):` scope to move processed change files from `docs/changes/pending/` to `docs/changes/done/`:
 
 | Prefix | When to use |
 |---|---|

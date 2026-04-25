@@ -84,7 +84,7 @@ kit plan-status
 Route by `recommendation`:
 
 - `"no_plan"` → ad-hoc mode. Skip Step 2. Ask the human what to build.
-- `"already_synced"` → stop and report (`"plan is already in sync with HEAD; nothing to implement"`).
+- `"already_synced"` → every plan task has a matching `(impl):` commit. Stop and report (`"all plan tasks already implemented; nothing to do"`).
 - `"implement_from_plan"` → continue. Read `plan_path` and `next_pending_task_index`. If `next_pending_task_index > 0`, announce that work is resuming from that task — no prompt.
 
 **Step 2 — Execution mode** (plan-driven only). Assess task coupling (self-contained vs sharing interfaces), then ask:
@@ -149,6 +149,6 @@ Stop when `should_stop: true` (plateau detected). Report residual gaps from the 
 - `fix(impl): <description>` — bug fix
 - `chore(impl): <description>` — non-feature work
 
-The post-commit hook updates `.jkit/spec-sync` automatically.
+The post-commit hook moves the change files referenced by this run from `docs/changes/pending/` to `docs/changes/done/` and amends the commit.
 
 **Resume after interruption.** Re-run Step 1. `next_pending_task_index` is the resume point — continue from there, no prompt, no git-log archaeology.

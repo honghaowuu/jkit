@@ -27,13 +27,17 @@ if command -v direnv &>/dev/null && [ -f ".envrc" ]; then
   direnv allow . 2>/dev/null || true
 fi
 
-# 3. Validate jkit CLI
-if [ ! -x "${PLUGIN_ROOT}/bin/jkit" ]; then
-  echo "jkit: bin/jkit missing or not executable. Run: chmod +x ~/.claude/plugins/jkit/bin/*" >&2
-fi
+# 3. Validate bundled CLIs
+for b in jkit kit codeskel; do
+  if [ ! -x "${PLUGIN_ROOT}/bin/$b" ]; then
+    echo "jkit: bin/$b missing or not executable. Run: chmod +x \"${PLUGIN_ROOT}/bin/\"*" >&2
+  fi
+done
 
-# 4. Conditional context injection — only for jkit-managed projects
-if [ ! -f ".jkit/spec-sync" ]; then
+# 4. Conditional context injection — only for jkit-managed projects.
+# A project is jkit-managed iff it tracks pending change descriptions under
+# docs/changes/ (the change-file-driven workflow introduced in 2026-04).
+if [ ! -d "docs/changes" ]; then
   printf '{}\n'
   exit 0
 fi

@@ -141,7 +141,7 @@ Failure → surface the last 20 lines of the tool's output and stop.
 **Step 5 — Post-process.** Move generated output into project structure:
 
 1. Move `/tmp/feign-gen-<service>/src/main/java/<group-path>/feign/*` → `src/main/java/<group-path>/feign/`.
-2. DTO de-dup: for each generated class under `feign/dto/`, query `jkit skel src/main/java` (the existing subcommand) for matching FQNs. If a project class already exists with the same shape, delete the generated copy and rewrite the client's import. (When in doubt, keep the generated one — collisions are surfaced at compile-time, which is recoverable.)
+2. DTO de-dup: for each generated class under `feign/dto/`, run `find src/main/java -name '<ClassName>.java'` to find a project class with the same simple name. If a match exists and has the same shape, delete the generated copy and rewrite the client's import. (When in doubt, keep the generated one — collisions are surfaced at compile-time, which is recoverable.)
 3. If `--scope` was a path prefix in Step 3: delete generated `*Api.java` files whose `@RequestMapping` paths don't match.
 4. Add a Feign config class (`<group-path>/feign/<Service>FeignConfig.java`) with placeholders for:
    - `RequestInterceptor` for auth (Bearer / API key / mTLS — derive from contract security schemes if present, else leave a `// TODO: wire auth` and warn the human).
