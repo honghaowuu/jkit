@@ -20,6 +20,7 @@ One mechanical step (`jkit changes bootstrap`) plus orientation. No code changes
 - [ ] Ensure we're in a git repo (`git init` if not)
 - [ ] Detect whether already bootstrapped
 - [ ] `jkit changes bootstrap`
+- [ ] Ensure `docs/project-info.yaml` exists (`jkit standards init` if not) and ask the human to review it
 - [ ] Tell the human how to write their first change file
 
 ## Detailed Flow
@@ -38,7 +39,7 @@ If `git rev-parse` fails, run `git init` directly — no prompt. Announce: *"Ini
 ls -d docs/changes/ pom.xml 2>/dev/null
 ```
 
-- `docs/changes/` already exists → already bootstrapped. Step 3 is a no-op (still safe to run); jump straight to Step 4.
+- `docs/changes/` already exists → already bootstrapped. Step 3 is a no-op (still safe to run); jump straight to Step 4. Step 4 itself is idempotent — `jkit standards init` only runs when `docs/project-info.yaml` is missing.
 - No `pom.xml` (and no `build.gradle*`) → warn the human that jkit is Java-focused and ask whether to continue.
 
 ### Step 3 — Bootstrap
@@ -49,10 +50,22 @@ jkit changes bootstrap
 
 Creates `docs/changes/pending/` and `docs/changes/done/`, each with a `.gitkeep` so the empty dirs survive `git add`. Idempotent. JSON output reports `created` / `existing` lists.
 
-### Step 4 — Stage and confirm
+### Step 4 — Ensure project-info.yaml
 
 ```bash
-git add docs/changes/
+[ -f docs/project-info.yaml ] || jkit standards init
+```
+
+`docs/project-info.yaml` configures which Java standards files apply to the project (database, tenant, i18n, redis, spring-cloud, auth-toms — see `<plugin-root>/docs/java-coding-standards.md`). `jkit standards init` copies the shipped template; the project then customizes it.
+
+Tell the human:
+
+> *"`docs/project-info.yaml` is staged with template defaults — please review and adjust the `enabled` flags (e.g., set `spring-cloud.enabled: true` if this project uses Nacos/Eureka; set `i18n.enabled: false` if you don't ship multi-language messages) before any code-writing skill runs. The current settings determine which rule files `jkit standards list` returns."*
+
+### Step 5 — Stage and confirm
+
+```bash
+git add docs/changes/ docs/project-info.yaml
 ```
 
 Tell the human:
