@@ -256,7 +256,7 @@ For each affected domain:
 kit scenarios sync <domain>
 ```
 
-Parses the current `docs/domains/<domain>/api-spec.yaml`, derives the required scenario set, and appends any missing entries to `docs/domains/<domain>/test-scenarios.yaml`. Append-only and idempotent. Derivation rules live in `docs/scenarios-prd.md`; do not replicate them here.
+Parses the current `docs/domains/<domain>/api-spec.yaml`, derives the required scenario set, and appends any missing entries to `docs/domains/<domain>/test-scenarios.yaml`. Append-only and idempotent — the binary owns the derivation rules.
 
 **On non-zero exit:** stop and surface stderr. Do not proceed to Step 9.3 — an unsynced yaml invalidates downstream gap detection.
 

@@ -6,7 +6,7 @@ Spec-driven development for Java/Spring Boot microservice teams.
 
 **What's included:**
 
-- 8 Claude skills covering the full dev cycle: project bootstrap, spec delta, unit TDD, integration test TDD, coverage gating, contract publishing, SQL migration authoring, and Feign client generation
+- 10 Claude skills covering the full dev cycle: project bootstrap, change capture, spec delta, SQL migration authoring, upstream-dependency planning, unit TDD, integration test TDD, coverage gating, contract publishing, and Feign client generation
 - `bin/jkit` — a Rust CLI for Java project pipeline operations (pom fragment management, JaCoCo coverage gaps, scenario gap detection, schema migration diff/place, contract bundle staging)
 - `bin/kit` — a language-agnostic companion CLI for cross-cutting operations (plan/plugin status, scenario sync/skip, contract publish)
 - `bin/codeskel` — a polyglot project scanner used during contract generation
@@ -36,9 +36,17 @@ The skills form a pipeline. On a fresh repo, run `/migrate-project` once to boot
 
 One-time bootstrap. Creates `docs/changes/{pending,done}/` and explains how to write your first change file. Idempotent — safe to re-run.
 
+### `/write-change`
+
+Authors a new change file under `docs/changes/pending/` — either via a brainstorming interview (recommended for vague ideas) or as a one-shot capture (for ideas you can already describe in a paragraph). Output is the input that `/spec-delta` consumes.
+
 ### `/spec-delta`
 
 Start here for every cycle. Picks up pending change files in `docs/changes/pending/`, infers affected domains, updates the formal docs (`api-spec.yaml`, `domain-model.md`, `api-implement-logic.md`), runs scenario-gap detection, and produces a `change-summary.md` for your approval — before any code is written. Everything downstream derives from this change summary.
+
+### `/plan-upstream-deps`
+
+Pre-flight gate before `/java-tdd`. Scans the task scope for cross-service operations (verify device, charge user, send email, fetch profile…), attributes each to its owning microservice via the injected `## Available Service Contracts` catalog, and produces a per-dep plan (SDK / Feign / mock + feature request / install-then-decide) for human approval before any code is written.
 
 ### `/java-tdd`
 
@@ -76,7 +84,7 @@ Guides authoring of Liquibase or Flyway migrations aligned with the current spec
 
 **`bin/install-contracts.sh`** installs upstream service contract plugins listed in `.claude/settings.json` as Claude plugin dependencies, making their skills and domain docs available locally.
 
-Pom-fragment installation is now handled by the `jkit pom` subcommand (see `docs/jkit-pom-prd.md`). The previous `bin/pom-add.sh` shell script has been removed.
+Pom-fragment installation is handled by the `jkit pom` subcommand — run `jkit pom --help` for the full surface. The previous `bin/pom-add.sh` shell script has been removed.
 
 ---
 
@@ -161,7 +169,7 @@ templates/  # Docker Compose templates, pom fragments, env file templates
 
 ## Contributing
 
-Clone the repo and work directly against `main`. Skills live in `skills/<name>/SKILL.md` — each file is a self-contained skill definition consumed by Claude Code. The `bin/jkit` binary is pre-built from Rust source described in `docs/jkit-cli-prd.md`; rebuild with `cargo build --release` and replace the platform binary in `bin/`.
+Clone the repo and work directly against `main`. Skills live in `skills/<name>/SKILL.md` — each file is a self-contained skill definition consumed by Claude Code. The `bin/jkit`, `bin/kit`, and `bin/codeskel` polyglot wrappers dispatch to per-platform binaries (`bin/<name>-<os>-<arch>`) that the plugin ships pre-built. To rebuild from source, run `cargo build --release` in the relevant Rust workspace and replace the platform binary in `bin/`.
 
 Commit prefix conventions are required — `java-tdd` calls `jkit changes complete` on a final `(impl):` commit to move processed change files from `docs/changes/pending/` to `docs/changes/done/` and archive the run dir:
 

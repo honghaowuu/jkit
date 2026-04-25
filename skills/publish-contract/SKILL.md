@@ -189,4 +189,4 @@ The binary handles push, marketplace sync, catalog write, and the two `chore(con
 └── reference/contract.yaml               ← Level 4
 ```
 
-Generated via `jkit contract stage` from bundled templates. See `docs/jkit-contract-prd.md` for the template surface.
+Generated via `jkit contract stage` from bundled templates. Run `jkit contract stage --help` for the input/output surface.

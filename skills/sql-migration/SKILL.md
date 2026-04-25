@@ -73,7 +73,7 @@ digraph sql_migration {
 
 **Step 0 — Identify scope.** The run directory is passed by the caller. Read `<run>/change-summary.md` to identify affected tables (first column of `## Domains Changed` plus any explicit schema notes). If invoked without a run dir → stop and ask the caller.
 
-**Step 1 — Write `target-schema.yaml`.** Synthesise the post-migration schema from the spec docs (api-spec.yaml, plan.md, any domain schema documents). Write to `<run>/target-schema.yaml`. Append-only: only enumerate tables/columns relevant to this run. See `docs/jkit-migration-prd.md` for the schema format.
+**Step 1 — Write `target-schema.yaml`.** Synthesise the post-migration schema from the spec docs (api-spec.yaml, plan.md, any domain schema documents). Write to `<run>/target-schema.yaml`. Append-only: only enumerate tables/columns relevant to this run. Run `jkit migration diff --help` for the expected schema shape.
 
 **Step 2 — Run schema diff.**
 

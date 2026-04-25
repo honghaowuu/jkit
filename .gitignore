@@ -10,8 +10,7 @@ Thumbs.db
 # Build artifacts (for local bin/ builds)
 target/
 
-# Per-platform binaries dispatched to by bin/<name> wrappers.
-# Wrappers are tracked; platform binaries are produced by builds/releases.
-bin/*-linux-*
-bin/*-darwin-*
-bin/*-windows-*.exe
+# Per-platform binaries under bin/ (jkit-linux-x86_64, kit-darwin-aarch64, …)
+# are tracked: the plugin ships them so `claude plugin install jkit` works
+# out of the box. The polyglot wrappers in bin/<name> dispatch to them by
+# OS+arch at runtime.

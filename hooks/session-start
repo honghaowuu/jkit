@@ -3,8 +3,11 @@ set -euo pipefail
 
 PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# JSON string escaping — pure bash, no Python dependency
-# Same technique as superpowers session-start.
+# JSON string escaping — pure bash so the nudge / context emit path
+# (steps 4 + final platform branches) works even on hosts without python3.
+# The optional catalog block in step 6 still requires python3; it's gated
+# on `.jkit/marketplace-catalog.json` existing, so the absence of python3
+# only degrades that one feature.
 escape_for_json() {
     local s="$1"
     s="${s//\\/\\\\}"

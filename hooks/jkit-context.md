@@ -30,6 +30,7 @@ Switch envs: `JKIT_ENV=test direnv exec . <cmd>`
 - `/write-change` — author a new change file in `docs/changes/pending/`
 - `/spec-delta` — implement pending change files: update formal docs, plan, code
 - `/sql-migration` — author Liquibase/Flyway migrations for schema-changing deltas
+- `/plan-upstream-deps` — pre-flight scan for cross-service deps before `/java-tdd` (SDK / Feign / mock plan)
 - `/java-tdd` — implement a plan via TDD with JaCoCo coverage analysis
 - `/scenario-tdd` — implement integration test gaps from change-summary.md
 - `/java-verify` — quality gates: mvn verify + merged coverage + API coverage
