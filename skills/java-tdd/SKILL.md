@@ -21,6 +21,7 @@ description: Use when implementing any Java feature or bugfix via test-driven de
 ## Checklist
 
 - [ ] Load standards (run `jkit standards list`, read every file printed)
+- [ ] Pre-flight: scan task for cross-service deps; if any, invoke `plan-upstream-deps`
 - [ ] Run `kit plan-status` (route by `recommendation`)
 - [ ] Choose execution mode (plan-driven only)
 - [ ] Run `jkit pom prereqs --profile jacoco --apply`
@@ -35,6 +36,8 @@ description: Use when implementing any Java feature or bugfix via test-driven de
 ```dot
 digraph java_tdd {
     "Load standards (jkit standards list)" [shape=box];
+    "Cross-service deps in task?" [shape=diamond];
+    "Invoke plan-upstream-deps" [shape=box];
     "kit plan-status" [shape=box];
     "Recommendation?" [shape=diamond];
     "Stop + report" [shape=box];
@@ -50,7 +53,10 @@ digraph java_tdd {
     "Invoke scenario-tdd" [shape=doublecircle];
     "Final commit" [shape=doublecircle];
 
-    "Load standards (jkit standards list)" -> "kit plan-status";
+    "Load standards (jkit standards list)" -> "Cross-service deps in task?";
+    "Cross-service deps in task?" -> "Invoke plan-upstream-deps" [label="yes"];
+    "Cross-service deps in task?" -> "kit plan-status" [label="no"];
+    "Invoke plan-upstream-deps" -> "kit plan-status";
     "kit plan-status" -> "Recommendation?";
     "Recommendation?" -> "Ask execution mode" [label="implement_from_plan"];
     "Recommendation?" -> "jkit pom --profile jacoco --apply" [label="no_plan (ad-hoc)"];
@@ -74,6 +80,8 @@ digraph java_tdd {
 ## Detailed Flow
 
 **Step 0 — Load standards.** Run `jkit standards list` from the project root and read every file it prints. Apply all rules. (If the command errors with a missing-config message, run `jkit standards init` first to create `docs/project-info.yaml`.)
+
+**Step 0.5 — Pre-flight upstream-dependency scan.** Read the task scope (plan task description, change file, ad-hoc request). If it mentions any data or operation that *might* belong to another microservice — e.g. "verify device access", "charge user", "send activation email", "lookup customer profile" — **invoke the `plan-upstream-deps` skill before continuing.** That skill produces a per-dep plan (SDK / Feign / mock) and gates on human approval. Resume here once it returns; the dep table is authoritative for the rest of this run. If the task is purely local (CRUD on this service's own tables, pure computation) skip this step.
 
 **Step 1 — Plan status.**
 
