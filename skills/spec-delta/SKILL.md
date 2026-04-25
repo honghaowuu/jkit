@@ -8,11 +8,11 @@ description: Use when there are pending change files in docs/changes/pending/ th
 ## Checklist
 
 - [ ] Sync with remote
-- [ ] Scan docs/changes/pending/
-- [ ] Resume detection (if prior run exists)
+- [ ] `jkit changes status` (route by recommendation)
+- [ ] Resume routing (if existing run found)
 - [ ] Confirm scope of pending changes
 - [ ] Read change files
-- [ ] Validate change files
+- [ ] `jkit changes validate --files …`
 - [ ] Infer affected domains
 - [ ] Ask clarification questions
 - [ ] Update formal docs (inline or per-domain subagent)
@@ -21,8 +21,8 @@ description: Use when there are pending change files in docs/changes/pending/ th
 - [ ] Human reviews (git reset escape hatch)
 - [ ] Schema analysis (git diff docs/domains/*/)
 - [ ] Run `jkit scenarios gap` per affected domain
-- [ ] Create run directory + write .change-files
-- [ ] Write change-summary.md
+- [ ] `jkit changes init --feature … --files …`
+- [ ] `jkit changes summary --run … --feature …` + fill TODOs
 - [ ] Get change-summary approval
 - [ ] (if schema changes) Invoke sql-migration
 - [ ] Invoke writing-plans
@@ -34,13 +34,13 @@ description: Use when there are pending change files in docs/changes/pending/ th
 ```dot
 digraph spec_delta {
     "Sync with remote" [shape=box];
-    "Scan docs/changes/pending/" [shape=box];
-    "pending/ empty?" [shape=diamond];
+    "jkit changes status" [shape=box];
+    "Recommendation?" [shape=diamond];
     "Stop: no pending changes" [shape=doublecircle];
-    "Resume detection" [shape=box];
+    "Resume routing" [shape=box];
     "Confirm scope (all or pick one)" [shape=box];
     "Read change files" [shape=box];
-    "Validate change files" [shape=box];
+    "jkit changes validate" [shape=box];
     "Validation pass?" [shape=diamond];
     "Stop: invalid change file" [shape=doublecircle];
     "Infer affected domains" [shape=box];
@@ -54,8 +54,8 @@ digraph spec_delta {
     "Checkpoint: ready to continue?" [shape=box style=filled fillcolor=lightyellow];
     "git diff docs/domains/*/ → schema analysis" [shape=box];
     "Run jkit scenarios gap per domain" [shape=box];
-    "Create run directory + write .change-files" [shape=box];
-    "Write change-summary.md" [shape=box];
+    "jkit changes init" [shape=box];
+    "jkit changes summary + fill TODOs" [shape=box];
     "HARD-GATE: change-summary approval" [shape=box style=filled fillcolor=lightyellow];
     "Apply targeted edit" [shape=box];
     "Schema changes?" [shape=diamond];
@@ -65,14 +65,15 @@ digraph spec_delta {
     "Apply targeted plan edit" [shape=box];
     "Invoke java-tdd" [shape=doublecircle];
 
-    "Sync with remote" -> "Scan docs/changes/pending/";
-    "Scan docs/changes/pending/" -> "pending/ empty?";
-    "pending/ empty?" -> "Stop: no pending changes" [label="yes"];
-    "pending/ empty?" -> "Resume detection" [label="no"];
-    "Resume detection" -> "Confirm scope (all or pick one)";
+    "Sync with remote" -> "jkit changes status";
+    "jkit changes status" -> "Recommendation?";
+    "Recommendation?" -> "Stop: no pending changes" [label="no_pending"];
+    "Recommendation?" -> "Resume routing" [label="resume"];
+    "Recommendation?" -> "Confirm scope (all or pick one)" [label="start_new"];
+    "Resume routing" -> "Confirm scope (all or pick one)";
     "Confirm scope (all or pick one)" -> "Read change files";
-    "Read change files" -> "Validate change files";
-    "Validate change files" -> "Validation pass?";
+    "Read change files" -> "jkit changes validate";
+    "jkit changes validate" -> "Validation pass?";
     "Validation pass?" -> "Stop: invalid change file" [label="no"];
     "Validation pass?" -> "Infer affected domains" [label="yes"];
     "Infer affected domains" -> "Ask clarification questions";
@@ -87,9 +88,9 @@ digraph spec_delta {
     "Main thread fixes issues" -> "Doc compliance reviewer subagent";
     "Checkpoint: ready to continue?" -> "git diff docs/domains/*/ → schema analysis" [label="yes"];
     "git diff docs/domains/*/ → schema analysis" -> "Run jkit scenarios gap per domain";
-    "Run jkit scenarios gap per domain" -> "Create run directory + write .change-files";
-    "Create run directory + write .change-files" -> "Write change-summary.md";
-    "Write change-summary.md" -> "HARD-GATE: change-summary approval";
+    "Run jkit scenarios gap per domain" -> "jkit changes init";
+    "jkit changes init" -> "jkit changes summary + fill TODOs";
+    "jkit changes summary + fill TODOs" -> "HARD-GATE: change-summary approval";
     "HARD-GATE: change-summary approval" -> "Apply targeted edit" [label="B: edit"];
     "Apply targeted edit" -> "HARD-GATE: change-summary approval";
     "HARD-GATE: change-summary approval" -> "Schema changes?" [label="A: approved"];
@@ -120,31 +121,36 @@ git rev-list HEAD..@{u} --count
   > B) Continue without pulling
   > C) Abort"
 
-### Step 2 — Scan docs/changes/pending/
+### Step 2 — Scan and resume detection
 
 ```bash
-ls docs/changes/pending/*.md 2>/dev/null
+jkit changes status
 ```
 
-- No files → stop: *"No pending changes in docs/changes/pending/."*
-- Files found → continue.
+Reads `docs/changes/pending/`, finds the latest date-prefixed run dir under `.jkit/`, computes the set difference. JSON shape: `{ pending_files, existing_run, recommendation }`.
 
-### Step 3 — Resume detection
+Route by `recommendation`:
 
-If a run directory already exists under `.jkit/` (interrupted previous run):
+- `"no_pending"` → stop: *"No pending changes in docs/changes/pending/."*
+- `"start_new"` → continue to Step 4 with `pending_files` as scope.
+- `"resume"` → continue to Step 3.
 
-> "Found existing run `.jkit/YYYY-MM-DD-<feature>`. Resume from where it stopped?
+### Step 3 — Resume routing
+
+`existing_run.path` identifies the in-progress run. Ask:
+
+> "Found existing run `<existing_run.path>`. Resume from where it stopped?
 > A) Resume (recommended)
-> B) Start a fresh run (deletes the existing run directory)"
+> B) Start fresh — deletes the existing run directory"
 
-**On resume:** read `.change-files` and compare against current `docs/changes/pending/`. If new files have landed since the run started, ask:
-> "New pending files since this run started: <list>. Include them or defer to the next run?
+**On A:** if `existing_run.new_pending_since_run` is non-empty, ask:
+> "New pending files since this run started: <list>. Include or defer to the next run?
 > A) Defer — resume the original scope (recommended)
 > B) Include — restart from Step 4 with the expanded scope"
 
-Then continue from the first incomplete step (check which of `change-summary.md`, `plan.md` already exist).
+Then continue from the first incomplete step — use `existing_run.has_change_summary` and `has_plan` to find it (no need to re-stat).
 
-**On fresh:** `rm -rf .jkit/YYYY-MM-DD-<feature>/`, then continue to Step 4.
+**On B:** `rm -rf <existing_run.path>`, continue to Step 4 with `pending_files`.
 
 ### Step 4 — Confirm scope
 
@@ -165,13 +171,14 @@ Read the full content of each selected change file. No diffing required.
 
 ### Step 6 — Validate change files
 
-Before any writes, validate each selected change file:
+```bash
+jkit changes validate --files <comma-list-of-pending-paths>
+```
 
-- **Non-empty body.** Body below the frontmatter must contain at least one non-whitespace paragraph.
-- **Domain existence.** If frontmatter sets `domain: <name>`, verify `docs/domains/<name>/` exists. Missing `domain:` is allowed (Step 7 will infer).
+Pass `docs/changes/pending/<basename>.md` for each selected file. Binary checks: non-empty body below the frontmatter, and (if frontmatter sets `domain: <name>`) that `docs/domains/<name>/` exists.
 
-On failure, stop before any edits:
-> *"Change file `<path>` failed validation: <reason>. Fix the file and re-run spec-delta."*
+On `ok: false`, stop before any edits and surface each failing file's `errors[]`:
+> *"Change file `<path>` failed validation: <error>. Fix the file and re-run spec-delta."*
 
 Do not attempt to repair change files automatically — they are human input.
 
@@ -291,68 +298,41 @@ Note: `jkit scenarios gap` reports **all** unimplemented scenarios in the yaml, 
 
 ### Step 12 — Create run directory
 
-```bash
-mkdir -p .jkit/YYYY-MM-DD-<feature>/
-```
-
-`<feature>` = short slug from the most significant change (e.g., `billing-bulk-invoice`).
-
-**Tie-breaker:** if multiple changes are equally significant, concatenate the top two with `-and-` (e.g., `billing-bulk-invoice-and-payment-refund`). If three or more tie, ask the human:
+Pick `<feature>`: short slug from the most significant change (e.g., `billing-bulk-invoice`). If two changes tie, concatenate with `-and-`. If three+ tie, ask:
 
 > "Multiple changes of similar scope. Pick a slug for this run:
 > A) <slug-1> (recommended)
 > B) <slug-2>
 > C) <slug-combined>"
 
-Write `.jkit/YYYY-MM-DD-<feature>/.change-files` — one basename per line for each change file processed in this run:
+Then:
 
+```bash
+jkit changes init --feature <slug> --files <comma-list-of-basenames>
 ```
-2026-04-24-bulk-invoice.md
-```
+
+Creates `.jkit/YYYY-MM-DD-<feature>/` and writes `.change-files`. Idempotent on identical input; errors loudly on collision with a different file set (resolve via Step 3 fresh-start).
 
 ### Step 13 — Write change-summary.md
 
-Mechanical template-fill. Each section has a designated source — do not invent content beyond what those sources produce. Write `.jkit/<run>/change-summary.md` using this template:
-
-```markdown
-# Change Summary: <feature>
-
-**Date:** YYYY-MM-DD
-**Change files:** <comma-separated basenames from Step 5>
-
-## Domains Changed
-
-| Domain | Added | Modified | Removed |
-|--------|-------|----------|---------|
-| billing | BulkInvoice entity, POST /invoices/bulk | Invoice.status enum | — |
-
-## Schema Change Required
-Yes / No
-[If yes: brief description of implied changes]
-
-## Test Scenario Gaps
-12 unimplemented across 2 domains — run `jkit scenarios gap <domain>` for the list.
-
-## Assumptions
-- <any default picked when a Step 8 question was skipped by the filter>
+```bash
+jkit changes summary --run <run> --feature <slug> \
+  --gap-total <N> --gap-domains <M>
 ```
 
-#### Source mapping
+Writes `<run>/change-summary.md` with deterministic fields filled (heading, date, change files line, scenario-gap line) and three `<!-- TODO: ... -->` markers. `--gap-total` is the sum across all `jkit scenarios gap` outputs from Step 11; `--gap-domains` is the count of domains with at least one gap. Pass both as `0` to omit the gap section.
 
-| Section | Source | How to fill |
-|---|---|---|
-| **Date** | Today's date | `YYYY-MM-DD` |
-| **Change files** | `.change-files` written in Step 12 | Comma-join the basenames |
-| **Domains Changed** | Step 7 domain list + `git diff --stat -- docs/domains/*/` | One row per affected domain; Added/Modified/Removed from diff entities (no prose) |
-| **Schema Change Required** | Step 10 reasoning | `Yes` + one-line summary, or `No` |
-| **Test Scenario Gaps** | Step 11 JSON | Count total entries across domains plus domain count; one-line format. Omit the section if every domain returned `[]` |
-| **Assumptions** | Defaults chosen in Step 8 filter | Omit if no defaults were silently picked |
+Then resolve the three TODOs with targeted Edits:
 
-No "Cross-Domain Effects" section — cross-domain effects appear as multiple rows in **Domains Changed**. Prose descriptions of cross-domain coupling tend to be speculative; skip them.
+| TODO | Source |
+|---|---|
+| **Domains Changed** (table rows) | Step 7 domain list + `git diff --stat -- docs/domains/*/`. One row per affected domain; cells are short noun phrases (entity / endpoint / field changes). Use `—` for empty cells. |
+| **Schema Change Required** | Step 10 reasoning. `Yes` + one-line summary, or `No`. |
+| **Assumptions** | Defaults silently picked during Step 8 filtering. Delete the section entirely if none. |
 
-Do not add sections beyond the template. Do not paraphrase the change description — the raw change files are already in `.change-files` for reference.
+Cross-domain effects appear as multiple rows in **Domains Changed** — no separate section. Do not paraphrase the change description; the raw change files are already in `.change-files`.
 
-Tell human: `"Written to .jkit/<run>/change-summary.md"`
+Tell human: `"Written to <run>/change-summary.md"`.
 
 ```
 A) Looks good (recommended)

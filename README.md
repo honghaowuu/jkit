@@ -104,6 +104,10 @@ Some skills shell out to third-party tools that must be on `PATH`:
 | `jkit migration place --run <dir> --feature <slug>` | Move an approved SQL file into the Flyway directory with a freshly-computed NNN |
 | `jkit contract service-meta` | Read-only: returns the metadata the contract skill needs |
 | `jkit contract stage --service … --interview … --domains …` | Generate the contract bundle in `.jkit/contract-stage/<service>/` |
+| `jkit changes status` | Report pending change files and any in-progress run; recommend `no_pending`/`start_new`/`resume` |
+| `jkit changes validate --files <paths>` | Validate change files (non-empty body + frontmatter `domain:` exists) |
+| `jkit changes init --feature <slug> --files <basenames>` | Create `.jkit/<date>-<feature>/` and write `.change-files` |
+| `jkit changes summary --run <dir> --feature <slug> [--gap-total N --gap-domains M]` | Emit a `change-summary.md` skeleton with deterministic fields filled |
 
 ### `kit` subcommands
 
