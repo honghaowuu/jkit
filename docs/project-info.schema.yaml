@@ -1,0 +1,63 @@
+# jkit project info — copy to docs/project-info.yaml and customize.
+# Fields with `enabled` flags gate which standards files apply.
+# Run `jkit standards list --explain` to see active gates.
+
+project:
+  name: my-app                        # maven artifactId, log file name
+  package: com.newland.myapp          # default: com.newland.{name}
+  server-port: 3000                   # default: random 3000-3999
+
+stack:
+  java: 17
+  spring-boot: 3.3.13
+  mybatis-plus: 3.5.6
+
+# gates standards/database.md
+database:
+  enabled: true
+  type: mysql                         # only mysql supported
+  name: my_app_db
+
+# gates standards/tenant.md
+# independent of auth.toms.enabled (a service can be multi-tenant
+# without using TOMS — e.g. behind a gateway injecting tenant headers)
+tenant:
+  enabled: true
+
+# gates standards/i18n.md
+i18n:
+  enabled: true
+  languages: [zh, en, pt, ja]
+
+# gates standards/redis.md
+redis:
+  enabled: true
+
+# gates standards/spring-cloud.md (and all sub-modules)
+spring-cloud:
+  enabled: false
+  discovery:
+    component: nacos                  # nacos | eureka | consul | zookeeper
+  config-center:
+    enabled: true
+    component: nacos
+  circuit-breaker:
+    enabled: true
+    component: sentinel               # sentinel | resilience4j
+  gateway:
+    enabled: false
+
+# gates standards/auth-toms.md
+auth:
+  toms:
+    enabled: true
+    api-version: 3.4.00-JDK17-SNAPSHOT
+
+# referenced by standards/java-coding.md (Maven Repositories section)
+maven:
+  repositories:
+    - id: aliyun-repos
+      url: https://maven.aliyun.com/repository/public
+      snapshots: false
+    - id: maven-snapshots
+      url: http://192.168.132.145:54002/nexus/repository/maven-snapshots/
