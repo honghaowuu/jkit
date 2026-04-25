@@ -200,7 +200,9 @@ For driving the scenario-tdd implementation loop. Reads `<dir>/change-summary.md
 
 ## `prereqs` — detect + install test prerequisites
 
-Owns the Java/Spring-Boot bootstrap phase of the scenario-tdd skill. The binary contains the canonical knowledge of "what does this project need to run integration tests" so the skill doesn't redraw the decision tree each invocation.
+Owns the Java/Spring-Boot bootstrap phase of the scenario-tdd skill. The binary orchestrates Spring Boot version detection, pom mutation, runtime probing, and template installation so the skill doesn't redraw the decision tree each invocation.
+
+**Delegation.** Pom-fragment installation is delegated to the unified `pom-doctor` binary (see `docs/pom-doctor-prd.md`). `scenarios prereqs` is a thin orchestrator over pom-doctor + non-pom concerns.
 
 ### Algorithm
 
@@ -208,25 +210,20 @@ Owns the Java/Spring-Boot bootstrap phase of the scenario-tdd skill. The binary 
 2. Pick the testing strategy:
    - SB ≥ 3.1 → `testcontainers`
    - SB < 3.1 → `compose`
-3. Strategy-specific checks:
-   - **testcontainers:** verify `<dependencies>` contains Testcontainers, RestAssured, WireMock. Missing → record in `missing_pom_deps`.
-   - **compose:** verify RestAssured in `<dependencies>` (record if missing). Probe for container runtime in order: `docker compose`, `docker-compose`, `podman compose`. First hit wins → `runtime`. None found → record blocking error.
-4. Strategy-specific files:
+3. Pom mutation — invoke `pom-doctor prereqs --profile <strategy> [--apply] [--pom <path>]` and capture its JSON. The result populates `pom_status` in this binary's output.
+4. Strategy-specific non-pom concerns:
    - **testcontainers:** none required.
-   - **compose:** verify `docker-compose.test.yml` at repo root. Missing → record in `missing_files`.
+   - **compose:** probe for container runtime in order: `docker compose`, `docker-compose`, `podman compose`. First hit wins → `runtime`. None found → record blocking error. Verify `docker-compose.test.yml` at repo root; missing → record in `missing_files`. Under `--apply`, copy the bundled template.
 5. Without `--apply`: emit JSON describing current state and what *would* be done; mutate nothing.
-6. With `--apply`: write missing pom fragments and copy missing template files; record each mutation in `actions_taken`.
+6. With `--apply`: pom-doctor mutates the pom; this binary handles the compose template copy. Each action is recorded in `actions_taken`.
 
 ### Bundled templates
 
-Templates are compiled into the binary via `include_str!` so there is no drift between binary version and template content:
+Pom fragments live in `pom-doctor` (see its PRD). This binary bundles only the non-pom template:
 
-- `templates/pom-fragments/testcontainers.xml`
-- `templates/pom-fragments/restassured.xml`
-- `templates/pom-fragments/wiremock.xml`
 - `templates/docker-compose.test.yml`
 
-Source-of-truth for the templates lives at `<repo>/skills/scenario-tdd/templates/` (during binary build, these are copied into `crates/scenarios/templates/`).
+Bundled via `include_str!` from `crates/scenarios/templates/`.
 
 ### Output
 
@@ -237,9 +234,16 @@ Single JSON object to stdout:
   "spring_boot_version": "3.2.1",
   "testing_strategy": "testcontainers",
   "runtime": null,
-  "missing_pom_deps": [],
+  "pom_status": {
+    "profile": "testcontainers",
+    "missing": [],
+    "already_present": ["testcontainers", "rest-assured", "wiremock"],
+    "actions_taken": [],
+    "ready": true,
+    "blocking_errors": []
+  },
   "missing_files": [],
-  "actions_taken": ["added testcontainers fragment to pom.xml"],
+  "actions_taken": [],
   "ready": true,
   "blocking_errors": []
 }
@@ -252,11 +256,11 @@ Field semantics:
 | `spring_boot_version` | string | From `<parent><version>` |
 | `testing_strategy` | `"testcontainers"` \| `"compose"` | Derived from version |
 | `runtime` | string \| null | Container runtime (`compose` strategy only); null otherwise |
-| `missing_pom_deps` | string[] | Empty after a successful `--apply` |
-| `missing_files` | string[] | Empty after a successful `--apply` |
-| `actions_taken` | string[] | Populated by `--apply`; `[]` in dry-run |
-| `ready` | bool | True when no blocking errors and (post-`--apply`) no missing items |
-| `blocking_errors` | string[] | Human-readable; e.g. "no container runtime found" |
+| `pom_status` | object | Verbatim pom-doctor response for the chosen profile |
+| `missing_files` | string[] | Non-pom templates still missing (e.g. `docker-compose.test.yml`); empty after a successful `--apply` |
+| `actions_taken` | string[] | This binary's actions (compose-template copy, etc.). pom-doctor's actions live under `pom_status.actions_taken`. |
+| `ready` | bool | True when this binary has no blocking errors AND `pom_status.ready` is true |
+| `blocking_errors` | string[] | Human-readable; e.g. `"no container runtime found"` |
 
 ### Exit codes
 

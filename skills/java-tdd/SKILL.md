@@ -23,7 +23,7 @@ description: Use when implementing any Java feature or bugfix via test-driven de
 - [ ] Load java-coding-standards
 - [ ] Run `jkit plan-status` (route by `recommendation`)
 - [ ] Choose execution mode (plan-driven only)
-- [ ] Run `jacoco-filter prereqs --apply`
+- [ ] Run `pom-doctor prereqs --profile jacoco --apply`
 - [ ] Implement per Step 2 mode (subagent-driven / inline / ad-hoc)
 - [ ] Compile check after each task (mode 1: inside subagent spec; mode 2 / ad-hoc: parent flow; max 3 retries)
 - [ ] Coverage loop with `--iteration-state` until `should_stop: true`
@@ -39,7 +39,7 @@ digraph java_tdd {
     "Recommendation?" [shape=diamond];
     "Stop + report" [shape=box];
     "Ask execution mode" [shape=box];
-    "jacoco-filter prereqs --apply" [shape=box];
+    "pom-doctor --profile jacoco --apply" [shape=box];
     "Mode?" [shape=diamond];
     "subagent-driven-development" [shape=box];
     "executing-plans (inline TDD + compile)" [shape=box];
@@ -53,10 +53,10 @@ digraph java_tdd {
     "Load java-coding-standards" -> "jkit plan-status";
     "jkit plan-status" -> "Recommendation?";
     "Recommendation?" -> "Ask execution mode" [label="implement_from_plan"];
-    "Recommendation?" -> "jacoco-filter prereqs --apply" [label="no_plan (ad-hoc)"];
+    "Recommendation?" -> "pom-doctor --profile jacoco --apply" [label="no_plan (ad-hoc)"];
     "Recommendation?" -> "Stop + report" [label="already_synced"];
-    "Ask execution mode" -> "jacoco-filter prereqs --apply";
-    "jacoco-filter prereqs --apply" -> "Mode?";
+    "Ask execution mode" -> "pom-doctor --profile jacoco --apply";
+    "pom-doctor --profile jacoco --apply" -> "Mode?";
     "Mode?" -> "subagent-driven-development" [label="plan + mode 1"];
     "Mode?" -> "executing-plans (inline TDD + compile)" [label="plan + mode 2"];
     "Mode?" -> "TDD on described change + compile" [label="ad-hoc"];
@@ -106,7 +106,7 @@ Subagent model selection (mode 1 only):
 **Step 3 — Prerequisites.**
 
 ```bash
-jacoco-filter prereqs --apply
+pom-doctor prereqs --profile jacoco --apply
 ```
 
 Announce non-empty `actions_taken`. If `ready: false` or `blocking_errors` is non-empty → stop and report.

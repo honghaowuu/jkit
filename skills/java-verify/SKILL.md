@@ -5,108 +5,112 @@ description: Use when verifying all quality gates and coverage after scenario-td
 
 **Announcement:** At start: *"I'm using the java-verify skill to run quality gates and coverage checks."*
 
+## Iron Law
+
+Quality gates are non-negotiable. If Spotless / PMD / SpotBugs / JaCoCo are not installed, install them — never skip. If a verification step fails, classify the failure and fix at root cause; do not bypass.
+
 ## Checklist
 
 - [ ] Load java-coding-standards
-- [ ] Ensure quality plugins
-- [ ] Run mvn verify
-- [ ] Check merged JaCoCo coverage
-- [ ] Fix failures or note gaps
-- [ ] Invoke requesting-code-review
+- [ ] `pom-doctor prereqs --profile quality --apply`
+- [ ] `mvn spotless:apply` (auto-fix formatting before verify)
+- [ ] `mvn verify` — classify failures, fix at root, repeat (max 3 attempts)
+- [ ] Coverage check via `jacoco-filter`
+- [ ] Invoke `superpowers:requesting-code-review`
 
 ## Process Flow
 
 ```dot
 digraph java_verify {
     "Load java-coding-standards" [shape=box];
-    "Ensure quality plugins\n(Spotless/PMD/SpotBugs)" [shape=box];
-    "mvn spotless:apply\n(auto-fix formatting)" [shape=box];
+    "pom-doctor --profile quality --apply" [shape=box];
+    "mvn spotless:apply + git add -u" [shape=box];
     "mvn verify" [shape=box];
-    "jacoco-filter (merged jacoco)" [shape=box];
-    "Failures?" [shape=diamond];
-    "Fix inline\n(max 3 attempts)" [shape=box];
-    "Gaps only?" [shape=diamond];
+    "Failure?" [shape=diamond];
+    "Classify" [shape=box];
+    "Spotless violation -> re-apply" [shape=box];
+    "Test/compile/PMD/SpotBugs -> fix at root" [shape=box];
+    "jacoco-filter (merged report)" [shape=box];
+    "Coverage gaps?" [shape=diamond];
     "Ask: fix now or note for review" [shape=box];
     "superpowers:requesting-code-review" [shape=doublecircle];
 
-    "Load java-coding-standards" -> "Ensure quality plugins\n(Spotless/PMD/SpotBugs)";
-    "Ensure quality plugins\n(Spotless/PMD/SpotBugs)" -> "mvn spotless:apply\n(auto-fix formatting)";
-    "mvn spotless:apply\n(auto-fix formatting)" -> "mvn verify";
-    "mvn verify" -> "jacoco-filter (merged jacoco)";
-    "jacoco-filter (merged jacoco)" -> "Failures?";
-    "Failures?" -> "Fix inline\n(max 3 attempts)" [label="yes"];
-    "Fix inline\n(max 3 attempts)" -> "mvn verify";
-    "Failures?" -> "Gaps only?" [label="no"];
-    "Gaps only?" -> "Ask: fix now or note for review" [label="yes"];
-    "Gaps only?" -> "superpowers:requesting-code-review" [label="no"];
+    "Load java-coding-standards" -> "pom-doctor --profile quality --apply";
+    "pom-doctor --profile quality --apply" -> "mvn spotless:apply + git add -u";
+    "mvn spotless:apply + git add -u" -> "mvn verify";
+    "mvn verify" -> "Failure?";
+    "Failure?" -> "Classify" [label="yes"];
+    "Classify" -> "Spotless violation -> re-apply" [label="spotless"];
+    "Classify" -> "Test/compile/PMD/SpotBugs -> fix at root" [label="other"];
+    "Spotless violation -> re-apply" -> "mvn verify";
+    "Test/compile/PMD/SpotBugs -> fix at root" -> "mvn verify";
+    "Failure?" -> "jacoco-filter (merged report)" [label="no"];
+    "jacoco-filter (merged report)" -> "Coverage gaps?";
+    "Coverage gaps?" -> "Ask: fix now or note for review" [label="yes"];
+    "Coverage gaps?" -> "superpowers:requesting-code-review" [label="no"];
     "Ask: fix now or note for review" -> "superpowers:requesting-code-review";
 }
 ```
 
 ## Detailed Flow
 
-**Step 0: Load java-coding-standards**
+**Step 0 — Load java-coding-standards.** Read `<plugin-root>/docs/java-coding-standards.md`.
 
-Read `<plugin-root>/docs/java-coding-standards.md`. Apply all rules.
+**Step 1 — Quality plugin prerequisites.**
 
-**Step 1: Ensure quality plugins**
-
-Check `pom.xml` for Spotless, PMD, SpotBugs. If missing:
-> "Quality plugins not found.
-> A) Add quality plugins now (recommended)
-> B) Skip quality gate"
-
-On A:
 ```bash
-bin/pom-add.sh quality        # jacoco if also missing: bin/pom-add.sh jacoco
+pom-doctor prereqs --profile quality --apply
 ```
-Note in final commit message.
 
-**Step 1.5: Auto-fix formatting**
+Installs Spotless, PMD, SpotBugs if missing. Announce non-empty `actions_taken`. If `ready: false` or `blocking_errors` is non-empty → stop and report.
+
+If JaCoCo is also missing (rare at this point — `java-tdd` Step 3 should have installed it): also run `pom-doctor prereqs --profile jacoco --apply`.
+
+**Step 2 — Auto-fix formatting.**
 
 ```bash
 JKIT_ENV=test direnv exec . mvn spotless:apply
-```
-
-Applies google-java-format to all Java sources. Run this before `mvn verify` so the Spotless check phase always passes. Stage any changed files:
-
-```bash
 git add -u
 ```
 
-**Step 2: Run mvn verify**
+Spotless rewrites Java sources to google-java-format. **Always run this before `mvn verify`** — Spotless's check phase in `verify` will fail any unformatted file, and hand-fixing formatting issues is wasted effort.
+
+**Step 3 — Run mvn verify.**
 
 ```bash
 JKIT_ENV=test direnv exec . mvn verify
 ```
 
-Runs: unit tests → Spotless check + PMD + SpotBugs → integration tests (Failsafe) → JaCoCo dump + merge + report.
+Runs unit tests → Spotless check + PMD + SpotBugs → integration tests (Failsafe) → JaCoCo dump + merge + report.
 
-Fix failures inline. Repeat until green. After 3 failed fix attempts: stop, report the root cause to the human, and do not continue.
+**On failure, classify before fixing.** Routing rule:
 
-**Step 3: Coverage check**
+| Failure type | Remediation |
+|---|---|
+| Spotless violation | Re-run `mvn spotless:apply`, stage, retry. (Should be impossible if Step 2 ran cleanly — if it isn't, check whether a generated file is being written after Step 2.) |
+| Compile error | Fix the source. Treat as a mistake from the implementation step that fed in here. |
+| Unit test failure | Apply `superpowers:systematic-debugging`. Distinguish test bug (fix test) vs production bug (fix code). |
+| PMD / SpotBugs finding | Fix at root — do not suppress without a documented reason. |
+| Failsafe (integration) failure | Apply `superpowers:systematic-debugging`. Likely points back at scenario-tdd's tests. |
+
+Repeat until green. Max 3 fix attempts; if still failing, stop and report the root cause to the human.
+
+**Step 4 — Coverage check.**
 
 ```bash
-# Unit + integration combined (merged jacoco.xml)
 jacoco-filter target/site/jacoco/jacoco.xml --summary --min-score 1.0
 ```
 
-Output: `{"summary": {"line_coverage_pct": ..., "lines_covered": ..., "lines_missed": ..., "by_class": [...]}, "methods": [...]}`.
-Each `methods[]` entry: `{"class": "com.example.InvoiceService", "source_file": "InvoiceService.java", "method": "calculateDiscount", "score": 4.5, "missed_lines": [42, 43, 47]}`.
-`method` is the bare method name; `class` is the fully-qualified class name; `missed_lines` are the uncovered line numbers. `methods[]` is sorted by score descending. `by_class` is sorted ascending by `line_coverage_pct` (worst-covered class first). Overall coverage is `summary.line_coverage_pct`. Default output is capped at top-5 methods.
+(Run `jacoco-filter --help` for the output schema.)
 
-> **Note:** API endpoint coverage (`codeskel api-coverage`) is not yet implemented. Endpoint gap analysis is skipped until that subcommand is available.
+`methods[]` non-empty → coverage gaps remain. Ask:
 
-**Failures** (tests or quality): fix inline, re-run.
+> "Coverage gaps found: [N methods, lowest class: X at Y%].
+> A) Fix gaps now — invoke scenario-tdd or add unit tests (recommended)
+> B) Proceed to code review — note the gaps in the review request"
 
-**Gaps only** (coverage below threshold): ask:
-> "Coverage gaps found: [list].
-> A) Fix gaps now — run scenario-tdd / add unit tests (recommended)
-> B) Proceed to code review — I'll note the gaps"
+**Step 5 — Code review.**
 
-**Step 4: Code review handoff**
+**REQUIRED SUB-SKILL:** invoke `superpowers:requesting-code-review`. java-verify does **not** own the final commit — that returns to `java-tdd` Step 7.
 
-java-verify does NOT own the final commit. The commit is `java-tdd`'s responsibility.
-
-**REQUIRED SUB-SKILL: invoke `superpowers:requesting-code-review`.** After code review completes, return control to `java-tdd` Step 7 (Final commit).
-
+If code review surfaces blocking issues: fix them and re-run from Step 3 (mvn verify). If informative-only, control returns to the caller chain.
