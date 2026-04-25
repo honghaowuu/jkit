@@ -147,9 +147,9 @@ The scenarios prereqs output JSON gains a `pom_status` key carrying pom-doctor's
 
 Folded into `pom-doctor prereqs --profile jacoco`. The jacoco-filter v1.1 PRD reduces to just the `--iteration-state` flag. Callers (java-tdd Step 3) invoke pom-doctor directly.
 
-### `bin/pom-add.sh quality` — **deprecated**
+### `bin/pom-add.sh` — **removed**
 
-Replaced by `pom-doctor prereqs --profile quality --apply`. The shell script can be removed once java-verify is updated.
+The previous shell-based pom mutator was deleted alongside this PRD landing. Quality, jacoco, and testcontainers fragments are all now sourced from `pom-doctor`'s bundled templates.
 
 ---
 
